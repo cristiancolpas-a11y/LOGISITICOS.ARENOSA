@@ -1,0 +1,8 @@
+{
+  "requestFramePermissions": [
+    "camera",
+    "geolocation"
+  ],
+  "name": "SAFETY_LA ARENOSA",
+  "description": "SERVIICOS SEGUROS"
+}
