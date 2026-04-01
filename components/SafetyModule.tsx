@@ -142,9 +142,10 @@ const SafetyModule: React.FC<SafetyModuleProps> = ({ onBack, vehicles, isView = 
   };
 
   const filteredRecords = records.filter(record => {
-    // Filter by contractor (Logisticos.co only) - more lenient check
-    const rContractor = record.contractor.toLowerCase().trim();
-    if (rContractor !== '' && !rContractor.includes('logisticos')) return false;
+    // Exclude "no es logisticos"
+    const contractorLower = String(record.contractor || '').toLowerCase();
+    const hcNameLower = String(record.hcName || '').toLowerCase();
+    if (contractorLower.includes('no es logisticos') || hcNameLower.includes('no es logistico')) return false;
 
     // Filter by selected month
     const recordMonth = getMonthFromDate(record.dateRaised);
@@ -174,6 +175,11 @@ const SafetyModule: React.FC<SafetyModuleProps> = ({ onBack, vehicles, isView = 
   const calculateCompliance = () => {
     return staff.map(member => {
       const memberRecords = records.filter(r => {
+        // Exclude "no es logisticos"
+        const contractorLower = String(r.contractor || '').toLowerCase();
+        const hcNameLower = String(r.hcName || '').toLowerCase();
+        if (contractorLower.includes('no es logisticos') || hcNameLower.includes('no es logistico')) return false;
+
         // Filter by contractor (Logisticos.co only) - more lenient check
         const rContractor = String(r.contractor || '').toLowerCase().trim();
         if (rContractor !== '' && !rContractor.includes('logisticos')) return false;
@@ -419,34 +425,15 @@ const SafetyModule: React.FC<SafetyModuleProps> = ({ onBack, vehicles, isView = 
   };
 
   const renderSafetyView = () => {
-    const area = SAFETY_AREAS.find(a => a.id === activeArea);
+    const area = SAFETY_AREAS.find(a => a.id === activeArea) || SAFETY_AREAS[0];
     if (!area) return null;
 
-    // Daily goal is the total number of staff members (optionally filtered by area)
-    const relevantStaff = staff.filter(m => !activeArea || m.area === activeArea);
+    // Meta is the total number of staff members with a QR code
+    const relevantStaff = staff.filter(m => String(m.qr || '').trim() !== '');
     const totalMeta = relevantStaff.length;
     
-    // Count unique staff members who have at least one record in filteredRecords for the selected day
-    const uniqueReporters = new Set();
-    filteredRecords.forEach(record => {
-      const matchingStaff = relevantStaff.find(member => {
-        const rQR = String(record.reporterQR || '').trim().toLowerCase();
-        const mQR = String(member.qr || '').trim().toLowerCase();
-        const rName = String(record.reportedBy || '').trim().toLowerCase();
-        const mName = String(member.nombre || '').trim().toLowerCase();
-        
-        const matchesQR = rQR !== '' && mQR !== '' && rQR === mQR;
-        const matchesName = rName !== '' && mName !== '' && (rName.includes(mName) || mName.includes(rName));
-        
-        return matchesQR || matchesName;
-      });
-      
-      if (matchingStaff) {
-        uniqueReporters.add(matchingStaff.id || matchingStaff.nombre);
-      }
-    });
-    
-    const totalRealizados = uniqueReporters.size;
+    // Realizados is the total number of reports in filteredRecords
+    const totalRealizados = filteredRecords.length;
     const totalPendientes = Math.max(0, totalMeta - totalRealizados);
     const totalPorcentaje = totalMeta > 0 ? (totalRealizados / totalMeta) * 100 : 0;
 
