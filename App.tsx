@@ -14,6 +14,7 @@ import {
 type ActiveView = 'acis';
 
 const App: React.FC = () => {
+  const [showEntryMenu, setShowEntryMenu] = useState(true);
   const [activeView, setActiveView] = useState<ActiveView>('acis');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -40,6 +41,44 @@ const App: React.FC = () => {
   useEffect(() => {
     handleSyncData();
   }, []);
+
+  if (showEntryMenu) {
+    return (
+      <div className="min-h-screen bg-[#0f172a] flex items-center justify-center p-6 w-full">
+        <div className="max-w-md w-full space-y-8 text-center">
+          <div className="flex flex-col items-center gap-6 animate-in fade-in zoom-in duration-700">
+            <div className="w-24 h-24 bg-rose-600 rounded-[2rem] flex items-center justify-center text-white font-black text-4xl shadow-2xl shadow-rose-500/40 rotate-12 hover:rotate-0 transition-transform duration-500">
+              BQA
+            </div>
+            <div className="space-y-2">
+              <h1 className="text-white text-5xl font-black uppercase tracking-[0.2em] leading-none">
+                Safety
+              </h1>
+              <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest opacity-60">
+                Sistema de Gestión y Seguimiento
+              </p>
+            </div>
+          </div>
+
+          <div className="grid gap-4 pt-8 animate-in fade-in slide-in-from-bottom-8 duration-1000 delay-300 fill-mode-both">
+            <button 
+              onClick={() => setShowEntryMenu(false)}
+              className="group relative overflow-hidden bg-rose-600 hover:bg-rose-500 text-white py-6 rounded-3xl font-black uppercase tracking-[0.3em] text-xs transition-all shadow-xl shadow-rose-600/20 active:scale-95"
+            >
+              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000"></div>
+              Ingresar
+            </button>
+            
+            <div className="pt-4 flex justify-center gap-4">
+              <div className="h-1 w-8 bg-rose-600/20 rounded-full"></div>
+              <div className="h-1 w-12 bg-rose-600 rounded-full"></div>
+              <div className="h-1 w-8 bg-rose-600/20 rounded-full"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#f8fafc] flex w-full">
@@ -99,7 +138,7 @@ const App: React.FC = () => {
         {/* CONTENT AREA */}
         <div className="flex-grow p-6 md:p-8 overflow-y-auto bg-[#f8fafc] custom-scrollbar">
           {activeView === 'acis' && (
-            <SafetyModule onBack={() => {}} vehicles={vehicles} isView={true} searchTerm={searchTerm} />
+            <SafetyModule onBack={() => setShowEntryMenu(true)} vehicles={vehicles} isView={true} searchTerm={searchTerm} />
           )}
         </div>
       </main>
