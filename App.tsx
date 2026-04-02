@@ -2,16 +2,17 @@ import React, { useState, useEffect } from 'react';
 import { Vehicle } from './types';
 import DocumentViewer from './components/DocumentViewer';
 import SafetyModule from './components/SafetyModule';
+import CashlessModule from './components/CashlessModule';
 
 import { 
   fetchVehiclesFromSheet
 } from './services/sheetService';
 
 import { 
-  RefreshCw, Menu, Loader2, Search, ShieldAlert
+  RefreshCw, Menu, Loader2, Search, ShieldAlert, CreditCard
 } from 'lucide-react';
 
-type ActiveView = 'acis';
+type ActiveView = 'acis' | 'cashless';
 
 const App: React.FC = () => {
   const [showEntryMenu, setShowEntryMenu] = useState(true);
@@ -97,6 +98,7 @@ const App: React.FC = () => {
           <nav className="flex-grow space-y-1 overflow-y-auto custom-scrollbar pr-2">
             {[
               { id: 'acis', label: 'ACIS', icon: <ShieldAlert size={18}/> },
+              { id: 'cashless', label: 'CASHLESS', icon: <CreditCard size={18}/> },
             ].map(item => (
               <button 
                 key={item.id}
@@ -139,6 +141,9 @@ const App: React.FC = () => {
         <div className="flex-grow p-6 md:p-8 overflow-y-auto bg-[#f8fafc] custom-scrollbar">
           {activeView === 'acis' && (
             <SafetyModule onBack={() => setShowEntryMenu(true)} vehicles={vehicles} isView={true} searchTerm={searchTerm} />
+          )}
+          {activeView === 'cashless' && (
+            <CashlessModule onBack={() => setShowEntryMenu(true)} searchTerm={searchTerm} />
           )}
         </div>
       </main>

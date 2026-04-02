@@ -233,3 +233,19 @@ export interface OperationalIndicator {
   trigger: number;
   meta: number;
 }
+
+export interface CashlessRecord {
+  id: string;
+  codigoCliente: string;
+  cliente: string;
+  barrio: string;
+  direccion: string;
+  municipio: string;
+  freRegularDias: string;
+  visitas: string;
+  nivelRiesgo: string;
+  validador: string;
+  fechaEjecucion: string;
+  fechaProgramacion: string;
+  calificacion: string;
+}
