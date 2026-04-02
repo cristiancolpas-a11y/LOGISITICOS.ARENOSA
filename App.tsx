@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Vehicle } from './types';
 import DocumentViewer from './components/DocumentViewer';
 import SafetyModule from './components/SafetyModule';
-import CashlessModule from './components/CashlessModule';
+import VisitasPOVSModule from './components/CashlessModule';
 
 import { 
   fetchVehiclesFromSheet
@@ -98,7 +98,7 @@ const App: React.FC = () => {
           <nav className="flex-grow space-y-1 overflow-y-auto custom-scrollbar pr-2">
             {[
               { id: 'acis', label: 'ACIS', icon: <ShieldAlert size={18}/> },
-              { id: 'cashless', label: 'CASHLESS', icon: <CreditCard size={18}/> },
+              { id: 'cashless', label: 'VISITAS POVS', icon: <CreditCard size={18}/> },
             ].map(item => (
               <button 
                 key={item.id}
@@ -143,7 +143,7 @@ const App: React.FC = () => {
             <SafetyModule onBack={() => setShowEntryMenu(true)} vehicles={vehicles} isView={true} searchTerm={searchTerm} />
           )}
           {activeView === 'cashless' && (
-            <CashlessModule onBack={() => setShowEntryMenu(true)} searchTerm={searchTerm} />
+            <VisitasPOVSModule onBack={() => setShowEntryMenu(true)} searchTerm={searchTerm} />
           )}
         </div>
       </main>

@@ -30,18 +30,19 @@ import {
   LabelList
 } from 'recharts';
 
-interface CashlessModuleProps {
+interface VisitasPOVSModuleProps {
   onBack: () => void;
   searchTerm: string;
 }
 
-const CashlessModule: React.FC<CashlessModuleProps> = ({ onBack, searchTerm: externalSearchTerm }) => {
+const VisitasPOVSModule: React.FC<VisitasPOVSModuleProps> = ({ onBack, searchTerm: externalSearchTerm }) => {
   const [records, setRecords] = useState<CashlessRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedRisk, setSelectedRisk] = useState<string>('TODOS');
   const [selectedValidator, setSelectedValidator] = useState<string>('TODOS');
   const [selectedMonth, setSelectedMonth] = useState<string>('TODOS');
+  const [executionFilter, setExecutionFilter] = useState<'ALL' | 'EXECUTED' | 'PENDING'>('ALL');
 
   useEffect(() => {
     loadData();
@@ -67,7 +68,7 @@ const CashlessModule: React.FC<CashlessModuleProps> = ({ onBack, searchTerm: ext
   const riskLevels = ['TODOS', ...Array.from(new Set(records.map(r => r.nivelRiesgo).filter(r => r !== '')))];
   const monthNames = ['ENE', 'FEB', 'MAR', 'ABR', 'MAY', 'JUN', 'JUL', 'AGO', 'SEP', 'OCT', 'NOV', 'DIC'];
 
-  const filteredRecords = records.filter(record => {
+  const baseFilteredRecords = records.filter(record => {
     const matchesSearch = 
       record.cliente.toLowerCase().includes(searchTerm.toLowerCase()) ||
       record.codigoCliente.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -90,14 +91,21 @@ const CashlessModule: React.FC<CashlessModuleProps> = ({ onBack, searchTerm: ext
   });
 
   const stats = {
-    total: filteredRecords.length,
-    executed: filteredRecords.filter(r => r.fechaEjecucion !== '').length,
-    pending: filteredRecords.filter(r => r.fechaEjecucion === '').length,
-    highRisk: filteredRecords.filter(r => r.nivelRiesgo.toUpperCase().includes('ALTO')).length,
-    compliance: filteredRecords.length > 0 
-      ? (filteredRecords.filter(r => r.fechaEjecucion !== '').length / filteredRecords.length) * 100 
+    total: baseFilteredRecords.length,
+    executed: baseFilteredRecords.filter(r => r.fechaEjecucion !== '').length,
+    pending: baseFilteredRecords.filter(r => r.fechaEjecucion === '').length,
+    highRisk: baseFilteredRecords.filter(r => r.nivelRiesgo.toUpperCase().includes('ALTO')).length,
+    compliance: baseFilteredRecords.length > 0 
+      ? (baseFilteredRecords.filter(r => r.fechaEjecucion !== '').length / baseFilteredRecords.length) * 100 
       : 0,
   };
+
+  const filteredRecords = baseFilteredRecords.filter(record => {
+    if (executionFilter === 'ALL') return true;
+    if (executionFilter === 'EXECUTED') return record.fechaEjecucion !== '';
+    if (executionFilter === 'PENDING') return record.fechaEjecucion === '';
+    return true;
+  });
 
   // Data for Rating Chart
   const ratingCounts = filteredRecords
@@ -154,7 +162,7 @@ const CashlessModule: React.FC<CashlessModuleProps> = ({ onBack, searchTerm: ext
       {/* HEADER & ACTIONS */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-3xl border shadow-sm">
         <div>
-          <h2 className="text-3xl font-black text-slate-800 uppercase tracking-tight">Módulo Cashless</h2>
+          <h2 className="text-3xl font-black text-slate-800 uppercase tracking-tight">Visitas POVS</h2>
           <p className="text-slate-500 text-xs font-bold uppercase tracking-widest">Seguimiento de Clientes y Visitas</p>
         </div>
         
@@ -178,25 +186,34 @@ const CashlessModule: React.FC<CashlessModuleProps> = ({ onBack, searchTerm: ext
       {/* STATS CARDS */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         {[
-          { label: 'Total Clientes', value: stats.total, icon: <User className="text-blue-600" />, color: 'bg-blue-50' },
-          { label: 'Ejecutados', value: stats.executed, icon: <CheckCircle2 className="text-emerald-600" />, color: 'bg-emerald-50' },
-          { label: 'Pendientes', value: stats.pending, icon: <Clock className="text-amber-600" />, color: 'bg-amber-50' },
-          { label: '% Cumplimiento', value: `${stats.compliance.toFixed(1)}%`, icon: <TrendingUp className="text-rose-600" />, color: 'bg-rose-50' },
+          { id: 'ALL', label: 'Total Clientes', value: stats.total, icon: <User className="text-blue-600" />, color: 'bg-blue-50', activeColor: 'ring-blue-400' },
+          { id: 'EXECUTED', label: 'Ejecutados', value: stats.executed, icon: <CheckCircle2 className="text-white" />, color: 'bg-emerald-600', activeColor: 'ring-emerald-400' },
+          { id: 'PENDING', label: 'Pendientes', value: stats.pending, icon: <Clock className="text-white" />, color: 'bg-rose-600', activeColor: 'ring-rose-400' },
+          { id: 'COMPLIANCE', label: '% Cumplimiento', value: `${stats.compliance.toFixed(1)}%`, icon: <TrendingUp className="text-rose-600" />, color: 'bg-rose-50', activeColor: 'ring-rose-400' },
         ].map((stat, i) => (
           <motion.div 
             key={i}
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: i * 0.1 }}
-            className="bg-white p-8 rounded-[2.5rem] border shadow-sm flex items-center gap-6 hover:shadow-md transition-shadow"
+            onClick={() => {
+              if (stat.id === 'COMPLIANCE') return;
+              setExecutionFilter(prev => prev === stat.id ? 'ALL' : stat.id as any);
+            }}
+            className={`bg-white p-8 rounded-[2.5rem] border shadow-sm flex items-center gap-6 hover:shadow-md transition-all cursor-pointer relative ${
+              executionFilter === stat.id ? `ring-2 ${stat.activeColor} shadow-lg scale-105 z-10` : 'hover:scale-[1.02]'
+            }`}
           >
-            <div className={`w-14 h-14 ${stat.color} rounded-2xl flex items-center justify-center shrink-0`}>
+            <div className={`w-14 h-14 ${stat.color} rounded-2xl flex items-center justify-center shrink-0 shadow-inner`}>
               {stat.icon}
             </div>
             <div>
               <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">{stat.label}</div>
               <div className="text-3xl font-black text-slate-800 tracking-tight">{stat.value}</div>
             </div>
+            {executionFilter === stat.id && (
+              <div className="absolute top-4 right-4 w-2 h-2 rounded-full bg-current opacity-50 animate-pulse" />
+            )}
           </motion.div>
         ))}
       </div>
@@ -334,7 +351,9 @@ const CashlessModule: React.FC<CashlessModuleProps> = ({ onBack, searchTerm: ext
                   strokeWidth={4}
                   fillOpacity={1} 
                   fill="url(#colorCount)" 
-                />
+                >
+                  <LabelList dataKey="count" position="top" style={{ fontSize: '10px', fontWeight: '800', fill: '#10b981' }} />
+                </Area>
               </AreaChart>
             </ResponsiveContainer>
           </div>
@@ -494,4 +513,4 @@ const Loader2 = ({ size, className }: { size: number, className?: string }) => (
   <RefreshCw size={size} className={`${className} animate-spin`} />
 );
 
-export default CashlessModule;
+export default VisitasPOVSModule;
