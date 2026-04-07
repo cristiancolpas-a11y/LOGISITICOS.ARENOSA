@@ -30,12 +30,12 @@ import {
   LabelList
 } from 'recharts';
 
-interface VisitasPOVSModuleProps {
+interface VisitasPOCSModuleProps {
   onBack: () => void;
   searchTerm: string;
 }
 
-const VisitasPOVSModule: React.FC<VisitasPOVSModuleProps> = ({ onBack, searchTerm: externalSearchTerm }) => {
+const VisitasPOCSModule: React.FC<VisitasPOCSModuleProps> = ({ onBack, searchTerm: externalSearchTerm }) => {
   const [records, setRecords] = useState<CashlessRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -162,7 +162,7 @@ const VisitasPOVSModule: React.FC<VisitasPOVSModuleProps> = ({ onBack, searchTer
       {/* HEADER & ACTIONS */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-3xl border shadow-sm">
         <div>
-          <h2 className="text-3xl font-black text-slate-800 uppercase tracking-tight">Visitas POVS</h2>
+          <h2 className="text-3xl font-black text-slate-800 uppercase tracking-tight">Visitas POCS</h2>
           <p className="text-slate-500 text-xs font-bold uppercase tracking-widest">Seguimiento de Clientes y Visitas</p>
         </div>
         
@@ -513,4 +513,4 @@ const Loader2 = ({ size, className }: { size: number, className?: string }) => (
   <RefreshCw size={size} className={`${className} animate-spin`} />
 );
 
-export default VisitasPOVSModule;
+export default VisitasPOCSModule;
