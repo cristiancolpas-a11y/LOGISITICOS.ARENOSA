@@ -42,6 +42,7 @@ const VisitasPOCSModule: React.FC<VisitasPOCSModuleProps> = ({ onBack, searchTer
   const [selectedRisk, setSelectedRisk] = useState<string>('TODOS');
   const [selectedValidator, setSelectedValidator] = useState<string>('TODOS');
   const [selectedMonth, setSelectedMonth] = useState<string>('TODOS');
+  const [selectedRating, setSelectedRating] = useState<string>('TODOS');
   const [executionFilter, setExecutionFilter] = useState<'ALL' | 'EXECUTED' | 'PENDING'>('ALL');
 
   useEffect(() => {
@@ -68,27 +69,54 @@ const VisitasPOCSModule: React.FC<VisitasPOCSModuleProps> = ({ onBack, searchTer
   const riskLevels = ['TODOS', ...Array.from(new Set(records.map(r => r.nivelRiesgo).filter(r => r !== '')))];
   const monthNames = ['ENE', 'FEB', 'MAR', 'ABR', 'MAY', 'JUN', 'JUL', 'AGO', 'SEP', 'OCT', 'NOV', 'DIC'];
 
-  const baseFilteredRecords = records.filter(record => {
-    const matchesSearch = 
-      record.cliente.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      record.codigoCliente.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      record.barrio.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      record.municipio.toLowerCase().includes(searchTerm.toLowerCase());
-    
-    const matchesRisk = selectedRisk === 'TODOS' || record.nivelRiesgo === selectedRisk;
-    const matchesValidator = selectedValidator === 'TODOS' || record.validador === selectedValidator;
+  const getFilteredData = (excludeFilter?: string) => {
+    return records.filter(record => {
+      if (excludeFilter !== 'search') {
+        const matchesSearch = 
+          record.cliente.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          record.codigoCliente.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          record.barrio.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          record.municipio.toLowerCase().includes(searchTerm.toLowerCase());
+        if (!matchesSearch) return false;
+      }
+      
+      if (excludeFilter !== 'risk') {
+        const matchesRisk = selectedRisk === 'TODOS' || record.nivelRiesgo === selectedRisk;
+        if (!matchesRisk) return false;
+      }
 
-    let matchesMonth = true;
-    if (selectedMonth !== 'TODOS' && record.fechaEjecucion) {
-      const date = new Date(record.fechaEjecucion);
-      const monthName = monthNames[date.getUTCMonth()];
-      matchesMonth = monthName === selectedMonth;
-    } else if (selectedMonth !== 'TODOS' && !record.fechaEjecucion) {
-      matchesMonth = false;
-    }
+      if (excludeFilter !== 'validator') {
+        const matchesValidator = selectedValidator === 'TODOS' || record.validador === selectedValidator;
+        if (!matchesValidator) return false;
+      }
 
-    return matchesSearch && matchesRisk && matchesValidator && matchesMonth;
-  });
+      if (excludeFilter !== 'month') {
+        let matchesMonth = true;
+        if (selectedMonth !== 'TODOS' && record.fechaEjecucion) {
+          const date = new Date(record.fechaEjecucion);
+          const monthName = monthNames[date.getUTCMonth()];
+          matchesMonth = monthName === selectedMonth;
+        } else if (selectedMonth !== 'TODOS' && !record.fechaEjecucion) {
+          matchesMonth = false;
+        }
+        if (!matchesMonth) return false;
+      }
+
+      if (excludeFilter !== 'execution') {
+        if (executionFilter === 'EXECUTED' && record.fechaEjecucion === '') return false;
+        if (executionFilter === 'PENDING' && record.fechaEjecucion !== '') return false;
+      }
+
+      if (excludeFilter !== 'rating') {
+        const matchesRating = selectedRating === 'TODOS' || (record.calificacion || 'SIN CALIFICAR') === selectedRating;
+        if (!matchesRating) return false;
+      }
+
+      return true;
+    });
+  };
+
+  const baseFilteredRecords = getFilteredData();
 
   const stats = {
     total: baseFilteredRecords.length,
@@ -100,15 +128,11 @@ const VisitasPOCSModule: React.FC<VisitasPOCSModuleProps> = ({ onBack, searchTer
       : 0,
   };
 
-  const filteredRecords = baseFilteredRecords.filter(record => {
-    if (executionFilter === 'ALL') return true;
-    if (executionFilter === 'EXECUTED') return record.fechaEjecucion !== '';
-    if (executionFilter === 'PENDING') return record.fechaEjecucion === '';
-    return true;
-  });
+  const filteredRecords = baseFilteredRecords;
 
-  // Data for Rating Chart
-  const ratingCounts = filteredRecords
+  // Data for Rating Chart - Ignore rating filter to allow selection
+  const ratingRecords = getFilteredData('rating');
+  const ratingCounts = ratingRecords
     .filter(r => (r.calificacion || '').toUpperCase() !== 'NO VISITADO')
     .reduce((acc, r) => {
       const rating = r.calificacion || 'SIN CALIFICAR';
@@ -122,7 +146,8 @@ const VisitasPOCSModule: React.FC<VisitasPOCSModuleProps> = ({ onBack, searchTer
   })).sort((a, b) => b.value - a.value);
 
   // Data for Execution Date Chart
-  const executionCounts = filteredRecords
+  const executionRecords = getFilteredData();
+  const executionCounts = executionRecords
     .filter(r => r.fechaEjecucion && (r.calificacion || '').toUpperCase() !== 'NO VISITADO')
     .reduce((acc, r) => {
       const date = r.fechaEjecucion;
@@ -135,8 +160,9 @@ const VisitasPOCSModule: React.FC<VisitasPOCSModuleProps> = ({ onBack, searchTer
     count: executionCounts[date]
   })).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
-  // Data for Monthly Chart
-  const monthlyCounts = filteredRecords
+  // Data for Monthly Chart - Ignore month filter to allow selection
+  const monthlyRecords = getFilteredData('month');
+  const monthlyCounts = monthlyRecords
     .filter(r => r.fechaEjecucion && (r.calificacion || '').toUpperCase() !== 'NO VISITADO')
     .reduce((acc, r) => {
       const date = new Date(r.fechaEjecucion);
@@ -148,7 +174,7 @@ const VisitasPOCSModule: React.FC<VisitasPOCSModuleProps> = ({ onBack, searchTer
 
   const monthlyData = monthNames
     .map(name => ({ name, count: monthlyCounts[name] || 0 }))
-    .filter(m => m.count > 0);
+    .filter(m => m.count > 0 || selectedMonth === m.name);
 
   const getRiskColor = (risk: string) => {
     const r = risk.toUpperCase();
@@ -234,10 +260,27 @@ const VisitasPOCSModule: React.FC<VisitasPOCSModuleProps> = ({ onBack, searchTer
               <h3 className="text-lg font-black text-slate-800 uppercase tracking-tight">Calificación</h3>
               <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Distribución de resultados</p>
             </div>
+            {selectedRating !== 'TODOS' && (
+              <button 
+                onClick={() => setSelectedRating('TODOS')}
+                className="ml-auto text-[10px] font-black text-rose-600 uppercase tracking-widest bg-rose-50 px-3 py-1 rounded-full hover:bg-rose-100 transition-colors"
+              >
+                Limpiar
+              </button>
+            )}
           </div>
           <div className="flex-grow min-h-0">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={ratingData} layout="vertical" margin={{ left: 10, right: 40 }}>
+              <BarChart 
+                data={ratingData} 
+                layout="vertical" 
+                margin={{ left: 10, right: 40 }}
+                onClick={(data) => {
+                  if (data && data.activeLabel) {
+                    setSelectedRating(prev => prev === data.activeLabel ? 'TODOS' : data.activeLabel);
+                  }
+                }}
+              >
                 <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9" />
                 <XAxis type="number" hide />
                 <YAxis 
@@ -252,9 +295,12 @@ const VisitasPOCSModule: React.FC<VisitasPOCSModuleProps> = ({ onBack, searchTer
                   cursor={{ fill: '#f8fafc' }}
                   contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)', fontSize: '11px', fontWeight: 'bold' }}
                 />
-                <Bar dataKey="value" radius={[0, 6, 6, 0]} barSize={24}>
+                <Bar dataKey="value" radius={[0, 6, 6, 0]} barSize={24} cursor="pointer">
                   {ratingData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={['#6366f1', '#8b5cf6', '#ec4899', '#f43f5e', '#f59e0b'][index % 5]} />
+                    <Cell 
+                      key={`cell-${index}`} 
+                      fill={selectedRating === 'TODOS' || selectedRating === entry.name ? ['#6366f1', '#8b5cf6', '#ec4899', '#f43f5e', '#f59e0b'][index % 5] : '#e2e8f0'} 
+                    />
                   ))}
                   <LabelList dataKey="value" position="right" style={{ fontSize: '10px', fontWeight: '800', fill: '#64748b' }} />
                 </Bar>
@@ -277,10 +323,26 @@ const VisitasPOCSModule: React.FC<VisitasPOCSModuleProps> = ({ onBack, searchTer
               <h3 className="text-lg font-black text-slate-800 uppercase tracking-tight">Mensual</h3>
               <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Visitas por mes</p>
             </div>
+            {selectedMonth !== 'TODOS' && (
+              <button 
+                onClick={() => setSelectedMonth('TODOS')}
+                className="ml-auto text-[10px] font-black text-blue-600 uppercase tracking-widest bg-blue-50 px-3 py-1 rounded-full hover:bg-blue-100 transition-colors"
+              >
+                Limpiar
+              </button>
+            )}
           </div>
           <div className="flex-grow min-h-0">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={monthlyData} margin={{ top: 10, bottom: 10 }}>
+              <BarChart 
+                data={monthlyData} 
+                margin={{ top: 10, bottom: 10 }}
+                onClick={(data) => {
+                  if (data && data.activeLabel) {
+                    setSelectedMonth(prev => prev === data.activeLabel ? 'TODOS' : data.activeLabel);
+                  }
+                }}
+              >
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                 <XAxis 
                   dataKey="name" 
@@ -296,7 +358,13 @@ const VisitasPOCSModule: React.FC<VisitasPOCSModuleProps> = ({ onBack, searchTer
                 <Tooltip 
                   contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)', fontSize: '11px', fontWeight: 'bold' }}
                 />
-                <Bar dataKey="count" fill="#3b82f6" radius={[6, 6, 0, 0]} barSize={40}>
+                <Bar dataKey="count" radius={[6, 6, 0, 0]} barSize={40} cursor="pointer">
+                  {monthlyData.map((entry, index) => (
+                    <Cell 
+                      key={`cell-${index}`} 
+                      fill={selectedMonth === 'TODOS' || selectedMonth === entry.name ? '#3b82f6' : '#e2e8f0'} 
+                    />
+                  ))}
                   <LabelList dataKey="count" position="top" style={{ fontSize: '10px', fontWeight: '800', fill: '#64748b' }} />
                 </Bar>
               </BarChart>
@@ -397,6 +465,17 @@ const VisitasPOCSModule: React.FC<VisitasPOCSModuleProps> = ({ onBack, searchTer
             className="bg-slate-50 border rounded-xl px-5 py-3 text-[11px] font-bold uppercase outline-none focus:ring-2 focus:ring-slate-200 transition-all appearance-none cursor-pointer"
           >
             {['TODOS', ...monthNames].map(m => <option key={m} value={m}>{m}</option>)}
+          </select>
+        </div>
+
+        <div className="flex flex-col gap-2 min-w-[150px]">
+          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Calificación</label>
+          <select 
+            value={selectedRating}
+            onChange={(e) => setSelectedRating(e.target.value)}
+            className="bg-slate-50 border rounded-xl px-5 py-3 text-[11px] font-bold uppercase outline-none focus:ring-2 focus:ring-slate-200 transition-all appearance-none cursor-pointer"
+          >
+            {['TODOS', ...Array.from(new Set(records.map(r => r.calificacion || 'SIN CALIFICAR').filter(r => r !== '')))].map(r => <option key={r} value={r}>{r}</option>)}
           </select>
         </div>
 
