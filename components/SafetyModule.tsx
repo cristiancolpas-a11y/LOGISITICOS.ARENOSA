@@ -731,7 +731,7 @@ const SafetyModule: React.FC<SafetyModuleProps> = ({ onBack, vehicles, isView = 
         {!isView && (
           <div className="flex items-center justify-between mb-8 shrink-0">
             <div>
-              <h1 className="text-4xl font-black text-white uppercase tracking-tighter">Módulo Safety</h1>
+              <h1 className="text-4xl font-black text-white uppercase tracking-tighter">Safety</h1>
               <p className="text-rose-500 font-bold uppercase tracking-widest text-xs mt-2">Control de Seguridad y Prevención</p>
             </div>
             <div className="flex items-center gap-4">
