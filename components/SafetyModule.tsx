@@ -48,6 +48,7 @@ const SafetyModule: React.FC<SafetyModuleProps> = ({ onBack, vehicles, isView = 
   const [viewMode, setViewMode] = useState<'detail' | 'summary'>('summary');
   const [complianceSortField, setComplianceSortField] = useState<string>('percentage');
   const [complianceSortDirection, setComplianceSortDirection] = useState<'asc' | 'desc'>('desc');
+  const [selectedComplianceArea, setSelectedComplianceArea] = useState<string>('TODOS');
 
   const searchTerm = externalSearchTerm || internalSearchTerm;
 
@@ -173,7 +174,11 @@ const SafetyModule: React.FC<SafetyModuleProps> = ({ onBack, vehicles, isView = 
   });
 
   const calculateCompliance = () => {
-    return staff.map(member => {
+    const filteredStaff = staff.filter(member => 
+      selectedComplianceArea === 'TODOS' || member.area === selectedComplianceArea
+    );
+
+    return filteredStaff.map(member => {
       const memberRecords = records.filter(r => {
         // Exclude "no es logisticos"
         const contractorLower = String(r.contractor || '').toLowerCase();
@@ -269,6 +274,7 @@ const SafetyModule: React.FC<SafetyModuleProps> = ({ onBack, vehicles, isView = 
   };
 
   const renderComplianceView = () => {
+    const areas = ['TODOS', ...Array.from(new Set(staff.map(m => m.area).filter(Boolean)))];
     const totalRealizados = complianceData.reduce((acc, m) => acc + m.totalQRs, 0);
     const totalMeta = complianceData.reduce((acc, m) => acc + m.goal, 0);
     const totalPendientes = Math.max(0, totalMeta - totalRealizados);
@@ -276,6 +282,29 @@ const SafetyModule: React.FC<SafetyModuleProps> = ({ onBack, vehicles, isView = 
 
     return (
       <div className="flex flex-col h-full space-y-6">
+        {/* Compliance Filters */}
+        <div className="flex flex-wrap items-center gap-4 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm shrink-0">
+          <div className="flex items-center gap-2">
+            <Filter size={16} className="text-slate-400" />
+            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Filtrar por Área:</span>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {areas.map(area => (
+              <button
+                key={area}
+                onClick={() => setSelectedComplianceArea(area)}
+                className={`px-4 py-1.5 text-[10px] font-black uppercase tracking-widest rounded-full transition-all border ${
+                  selectedComplianceArea === area 
+                    ? 'bg-rose-600 border-rose-600 text-white shadow-md' 
+                    : 'bg-white border-slate-200 text-slate-500 hover:border-rose-300 hover:text-rose-600'
+                }`}
+              >
+                {area}
+              </button>
+            ))}
+          </div>
+        </div>
+
         {/* Compliance Summary Cards */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 shrink-0">
           <div className="bg-white border border-slate-200 rounded-[2rem] p-6 shadow-sm flex flex-col items-center justify-center text-center">
@@ -311,7 +340,7 @@ const SafetyModule: React.FC<SafetyModuleProps> = ({ onBack, vehicles, isView = 
           <thead className="sticky top-0 z-10 bg-slate-50 border-b border-slate-200">
             <tr>
               <th 
-                className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest cursor-pointer hover:text-rose-600 transition-colors"
+                className="px-4 py-3 text-[9px] font-black text-slate-400 uppercase tracking-widest cursor-pointer hover:text-rose-600 transition-colors"
                 onClick={() => handleComplianceSort('nombre')}
               >
                 <div className="flex items-center gap-1">
@@ -322,7 +351,7 @@ const SafetyModule: React.FC<SafetyModuleProps> = ({ onBack, vehicles, isView = 
                 </div>
               </th>
               <th 
-                className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest cursor-pointer hover:text-rose-600 transition-colors"
+                className="px-4 py-3 text-[9px] font-black text-slate-400 uppercase tracking-widest cursor-pointer hover:text-rose-600 transition-colors"
                 onClick={() => handleComplianceSort('cedula')}
               >
                 <div className="flex items-center gap-1">
@@ -333,7 +362,7 @@ const SafetyModule: React.FC<SafetyModuleProps> = ({ onBack, vehicles, isView = 
                 </div>
               </th>
               <th 
-                className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest cursor-pointer hover:text-rose-600 transition-colors"
+                className="px-4 py-3 text-[9px] font-black text-slate-400 uppercase tracking-widest cursor-pointer hover:text-rose-600 transition-colors"
                 onClick={() => handleComplianceSort('area')}
               >
                 <div className="flex items-center gap-1">
@@ -344,7 +373,7 @@ const SafetyModule: React.FC<SafetyModuleProps> = ({ onBack, vehicles, isView = 
                 </div>
               </th>
               <th 
-                className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center cursor-pointer hover:text-rose-600 transition-colors"
+                className="px-4 py-3 text-[9px] font-black text-slate-400 uppercase tracking-widest text-center cursor-pointer hover:text-rose-600 transition-colors"
                 onClick={() => handleComplianceSort('totalQRs')}
               >
                 <div className="flex items-center justify-center gap-1">
@@ -355,7 +384,7 @@ const SafetyModule: React.FC<SafetyModuleProps> = ({ onBack, vehicles, isView = 
                 </div>
               </th>
               <th 
-                className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center cursor-pointer hover:text-rose-600 transition-colors"
+                className="px-4 py-3 text-[9px] font-black text-slate-400 uppercase tracking-widest text-center cursor-pointer hover:text-rose-600 transition-colors"
                 onClick={() => handleComplianceSort('goal')}
               >
                 <div className="flex items-center justify-center gap-1">
@@ -366,7 +395,7 @@ const SafetyModule: React.FC<SafetyModuleProps> = ({ onBack, vehicles, isView = 
                 </div>
               </th>
               <th 
-                className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center cursor-pointer hover:text-rose-600 transition-colors"
+                className="px-4 py-3 text-[9px] font-black text-slate-400 uppercase tracking-widest text-center cursor-pointer hover:text-rose-600 transition-colors"
                 onClick={() => handleComplianceSort('percentage')}
               >
                 <div className="flex items-center justify-center gap-1">
@@ -381,37 +410,37 @@ const SafetyModule: React.FC<SafetyModuleProps> = ({ onBack, vehicles, isView = 
           <tbody className="divide-y divide-slate-100">
             {isLoading ? (
               <tr>
-                <td colSpan={6} className="px-6 py-20 text-center">
-                  <RefreshCw className="animate-spin text-rose-500 mx-auto mb-4" size={32} />
-                  <p className="text-slate-400 font-bold uppercase tracking-widest text-xs">Cargando cumplimiento...</p>
+                <td colSpan={6} className="px-4 py-12 text-center">
+                  <RefreshCw className="animate-spin text-rose-500 mx-auto mb-4" size={24} />
+                  <p className="text-slate-400 font-bold uppercase tracking-widest text-[10px]">Cargando cumplimiento...</p>
                 </td>
               </tr>
             ) : complianceData.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-6 py-20 text-center">
-                  <p className="text-slate-400 font-bold uppercase tracking-widest text-xs">No se encontraron datos de personal</p>
+                <td colSpan={6} className="px-4 py-12 text-center">
+                  <p className="text-slate-400 font-bold uppercase tracking-widest text-[10px]">No se encontraron datos de personal</p>
                 </td>
               </tr>
             ) : (
               complianceData.map((member) => (
-                <tr key={member.id} className="hover:bg-slate-50 transition-colors group text-xs border-b border-slate-100">
-                  <td className="px-6 py-4">
-                    <div className="font-bold text-slate-700 uppercase">{member.nombre}</div>
-                    <div className="text-[10px] text-slate-400 italic">QR: {member.qr}</div>
+                <tr key={member.id} className="hover:bg-slate-50 transition-colors group text-[11px] border-b border-slate-100">
+                  <td className="px-4 py-2">
+                    <div className="font-bold text-slate-700 uppercase leading-tight">{member.nombre}</div>
+                    <div className="text-[9px] text-slate-400 italic">QR: {member.qr}</div>
                   </td>
-                  <td className="px-6 py-4">
+                  <td className="px-4 py-2">
                     <div className="text-slate-600 font-medium">{member.cedula}</div>
                   </td>
-                  <td className="px-6 py-4">
+                  <td className="px-4 py-2">
                     <div className="text-slate-600 font-medium uppercase">{member.area}</div>
                   </td>
-                  <td className="px-6 py-4 text-center">
+                  <td className="px-4 py-2 text-center">
                     <div className="font-bold text-slate-700">{member.totalQRs}</div>
                   </td>
-                  <td className="px-6 py-4 text-center">
+                  <td className="px-4 py-2 text-center">
                     <div className="font-bold text-slate-400">{member.goal}</div>
                   </td>
-                  <td className={`px-6 py-4 text-center font-black text-sm ${getSemaforoColor(member.percentage)}`}>
+                  <td className={`px-4 py-2 text-center font-black text-[12px] ${getSemaforoColor(member.percentage)}`}>
                     {member.percentage.toFixed(1)}%
                   </td>
                 </tr>
