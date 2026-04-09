@@ -2,14 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { 
   Users, ChevronLeft, LogIn, Search, Plus, MessageSquare, 
   CheckCircle2, Clock, Calendar, Send, Paperclip, Activity,
-  ChevronRight, Circle
+  ChevronRight, Circle, Bell
 } from 'lucide-react';
 import { auth, db } from '../firebase';
 import { signInAnonymously } from 'firebase/auth';
 import { 
   collection, query, where, getDocs, doc, getDoc, setDoc,
   addDoc, updateDoc, deleteDoc, onSnapshot, serverTimestamp, orderBy,
-  writeBatch
+  writeBatch, arrayUnion, limit
 } from 'firebase/firestore';
 import { fetchPeopleUsersFromSheet, fetchMentorshipPlansFromSheet, submitMentorshipPlanUpdateToSheet } from '../services/sheetService';
 import { PeopleUser, MentorshipPlan } from '../types';
@@ -33,6 +33,28 @@ const PeopleModule: React.FC<PeopleModuleProps> = ({ onBack }) => {
   const [newTaskDesc, setNewTaskDesc] = useState('');
   const [isAddingTask, setIsAddingTask] = useState(false);
   const [showConfirmClear, setShowConfirmClear] = useState(false);
+  const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
+  const [lastNotificationTime, setLastNotificationTime] = useState(Date.now());
+
+  const playNotificationSound = () => {
+    try {
+      const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2354/2354-preview.mp3');
+      audio.volume = 0.5;
+      audio.play();
+    } catch (e) {
+      console.warn("Could not play notification sound", e);
+    }
+  };
+
+  const showBrowserNotification = (title: string, body: string) => {
+    if (!("Notification" in window)) return;
+    
+    if (Notification.permission === "granted") {
+      new Notification(title, { body, icon: '/favicon.ico' });
+    } else if (Notification.permission !== "denied") {
+      Notification.requestPermission();
+    }
+  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -222,7 +244,61 @@ const PeopleModule: React.FC<PeopleModuleProps> = ({ onBack }) => {
   }, [user]);
 
   useEffect(() => {
-    if (!activePlan) return;
+    if (!user || plans.length === 0) return;
+
+    // Request notification permission
+    if ("Notification" in window && Notification.permission === "default") {
+      Notification.requestPermission();
+    }
+
+    const msgsRef = collection(db, 'mentorship_messages');
+    const planIds = plans.map(p => p.id);
+    
+    // Firestore 'in' query limit is 30.
+    const q = query(
+      msgsRef, 
+      where('planId', 'in', planIds.slice(0, 30)),
+      orderBy('createdAt', 'desc'),
+      limit(50)
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const counts: Record<string, number> = {};
+      let hasNewUnread = false;
+      let latestMsg: any = null;
+
+      snapshot.docs.forEach(doc => {
+        const data = doc.data();
+        if (!data.readBy.includes(user.id)) {
+          counts[data.planId] = (counts[data.planId] || 0) + 1;
+          
+          const msgTime = new Date(data.createdAt).getTime();
+          if (msgTime > lastNotificationTime && data.senderId !== user.id) {
+            hasNewUnread = true;
+            latestMsg = data;
+          }
+        }
+      });
+
+      if (hasNewUnread && latestMsg) {
+        // Only notify if we are not looking at the plan or window is blurred
+        if (!activePlan || activePlan.id !== latestMsg.planId || document.hidden) {
+          playNotificationSound();
+          const plan = plans.find(p => p.id === latestMsg.planId);
+          const senderName = plan ? (user.role === 'admin' ? plan.apadrinadoName : plan.otherUser?.name) : 'Alguien';
+          showBrowserNotification(`Nuevo mensaje de ${senderName}`, latestMsg.text);
+        }
+        setLastNotificationTime(Date.now());
+      }
+
+      setUnreadCounts(counts);
+    });
+
+    return () => unsubscribe();
+  }, [user, plans, activePlan, lastNotificationTime]);
+
+  useEffect(() => {
+    if (!activePlan || !user) return;
 
     const tasksRef = collection(db, 'mentorship_tasks');
     const qTasks = query(tasksRef, where('planId', '==', activePlan.id), orderBy('createdAt', 'asc'));
@@ -233,7 +309,18 @@ const PeopleModule: React.FC<PeopleModuleProps> = ({ onBack }) => {
     const msgsRef = collection(db, 'mentorship_messages');
     const qMsgs = query(msgsRef, where('planId', '==', activePlan.id), orderBy('createdAt', 'asc'));
     const unsubMsgs = onSnapshot(qMsgs, (snapshot) => {
-      setMessages(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      const newMsgs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setMessages(newMsgs);
+      
+      // Mark as read
+      snapshot.docs.forEach(docSnap => {
+        const data = docSnap.data();
+        if (!data.readBy.includes(user.id)) {
+          updateDoc(doc(db, 'mentorship_messages', docSnap.id), {
+            readBy: arrayUnion(user.id)
+          });
+        }
+      });
     });
 
     return () => {
@@ -496,13 +583,20 @@ const PeopleModule: React.FC<PeopleModuleProps> = ({ onBack }) => {
                     className="border-2 border-slate-100 rounded-3xl p-6 hover:border-blue-500 hover:shadow-lg transition-all cursor-pointer group"
                   >
                     <div className="flex items-center justify-between mb-4">
-                      <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest ${
-                        plan.status === 'Activo' ? 'bg-emerald-100 text-emerald-600' :
-                        plan.status === 'En proceso' ? 'bg-amber-100 text-amber-600' :
-                        'bg-slate-100 text-slate-600'
-                      }`}>
-                        {plan.status}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest ${
+                          plan.status === 'Activo' ? 'bg-emerald-100 text-emerald-600' :
+                          plan.status === 'En proceso' ? 'bg-amber-100 text-amber-600' :
+                          'bg-slate-100 text-slate-600'
+                        }`}>
+                          {plan.status}
+                        </span>
+                        {unreadCounts[plan.id] > 0 && (
+                          <span className="bg-rose-500 text-white text-[9px] font-black px-2 py-0.5 rounded-full animate-pulse flex items-center gap-1">
+                            <Bell size={8} fill="currentColor" /> {unreadCounts[plan.id]}
+                          </span>
+                        )}
+                      </div>
                       <span className="text-slate-400 text-[10px] font-bold flex items-center gap-1">
                         <Calendar size={12} /> {plan.endDate}
                       </span>
