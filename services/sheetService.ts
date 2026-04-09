@@ -1,6 +1,6 @@
 
 import Papa from 'papaparse';
-import { Vehicle, Driver, Report, MileageLog, Calibration, WashReport, Fine, Preventive, AvailabilityRecord, FleetComposition, OperationalIndicator, WorkshopRecord, SafetyRecord, StaffMember, CashlessRecord } from '../types';
+import { Vehicle, Driver, Report, MileageLog, Calibration, WashReport, Fine, Preventive, AvailabilityRecord, FleetComposition, OperationalIndicator, WorkshopRecord, SafetyRecord, StaffMember, CashlessRecord, PeopleUser, MentorshipPlan } from '../types';
 import { calculateStatus, normalizePlate, normalizeStr, getDaysDiff } from '../utils';
 
 const GOOGLE_SCRIPT_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbw9u62w53DHA54Sck1PmB6tdqzv9TK3OmKuoYU0TYwTdkZTtKnPI5Bnh4uIpnL6kUav/exec'; 
@@ -22,6 +22,10 @@ const BASE_URL_FINES = `https://docs.google.com/spreadsheets/d/${FINES_SHEET_ID}
 // HOJA CASHLESS
 const CASHLESS_DOC_ID = '1wyWYtEgi2eA2b-8DDpqr7l0SXF6-nG6oM71s8Gfwi04';
 const BASE_URL_CASHLESS = `https://docs.google.com/spreadsheets/d/${CASHLESS_DOC_ID}/export?format=csv`;
+
+// HOJA PLAN PADRINO
+const PLAN_PADRINO_DOC_ID = '1yt6Hr-RIGTca21zPwq2bn1KkbpRNvEJ6lm4VL76Q_Co';
+const BASE_URL_PLAN_PADRINO = `https://docs.google.com/spreadsheets/d/${PLAN_PADRINO_DOC_ID}/gviz/tq?tqx=out:csv`;
 
 const getCacheBuster = () => `&t=${new Date().getTime()}`;
 
@@ -1019,3 +1023,86 @@ export const submitFineToSheet = async (data: any): Promise<boolean> => {
   const method = data.updateMode ? 'POST_FINE_UPDATE' : 'POST_FINE';
   return await sendToGAS({ method, data }, GOOGLE_SCRIPT_FINES_URL);
 };
+
+/**
+ * PEOPLE USERS (Hoja codigos)
+ */
+export const fetchPeopleUsersFromSheet = async (): Promise<PeopleUser[]> => {
+  try {
+    const url = `${BASE_URL_PLAN_PADRINO}&sheet=${encodeURIComponent('codigos')}${getCacheBuster()}`;
+    const response = await fetch(url);
+    const csvText = await response.text();
+    if (!csvText || csvText.includes("<!DOCTYPE html")) return [];
+
+    return new Promise((resolve) => {
+      Papa.parse(csvText, {
+        header: false, skipEmptyLines: 'greedy',
+        complete: (results) => {
+          const rows = results.data as any[][];
+          if (!rows || rows.length < 2) { resolve([]); return; }
+          
+          const users = rows.slice(1)
+            .filter(row => row && row.length >= 2 && row[1]) // Cédula en Col B (Index 1)
+            .map((row): PeopleUser => {
+              const roleRaw = cleanSheetValue(row[3]).toLowerCase();
+              return {
+                id: cleanSheetValue(row[1]), // Cédula como ID
+                name: cleanSheetValue(row[0]),
+                identification: cleanSheetValue(row[1]),
+                accessCode: cleanSheetValue(row[2]),
+                role: roleRaw.includes('padrino') ? 'padrino' : 'apadrinado',
+                area: cleanSheetValue(row[4]) || 'GENERAL'
+              };
+            });
+          resolve(users);
+        },
+        error: () => resolve([])
+      });
+    });
+  } catch (e) { return []; }
+};
+
+/**
+ * PLAN PADRINO (Hoja Plan_Padrino)
+ */
+export const fetchMentorshipPlansFromSheet = async (): Promise<MentorshipPlan[]> => {
+  try {
+    const url = `${BASE_URL_PLAN_PADRINO}&sheet=${encodeURIComponent('Plan_Padrino')}${getCacheBuster()}`;
+    const response = await fetch(url);
+    const csvText = await response.text();
+    if (!csvText || csvText.includes("<!DOCTYPE html")) return [];
+
+    return new Promise((resolve) => {
+      Papa.parse(csvText, {
+        header: false, skipEmptyLines: 'greedy',
+        complete: (results) => {
+          const rows = results.data as any[][];
+          if (!rows || rows.length < 2) { resolve([]); return; }
+          
+          const plans = rows.slice(1)
+            .filter(row => row && row[1] && row[3]) // Padrino_ID y Apadrinado_ID
+            .map((row): MentorshipPlan => ({
+              id: cleanSheetValue(row[0]),
+              padrinoId: cleanSheetValue(row[1]),
+              padrinoCode: cleanSheetValue(row[2]),
+              apadrinadoId: cleanSheetValue(row[3]),
+              apadrinadoCode: cleanSheetValue(row[4]),
+              startDate: parseFlexibleDate(row[5]),
+              endDate: parseFlexibleDate(row[6]),
+              status: (cleanSheetValue(row[7]) as any) || 'Activo',
+              progress: (() => {
+                const val = parseFloat(cleanSheetValue(row[8]).replace(',', '.'));
+                if (isNaN(val)) return 0;
+                // Si es un decimal <= 1, asumimos que es formato porcentaje de Excel (0.5 = 50%)
+                return val <= 1 && val > 0 ? Math.round(val * 100) : Math.round(val);
+              })()
+            }));
+          resolve(plans);
+        },
+        error: () => resolve([])
+      });
+    });
+  } catch (e) { return []; }
+};
+
+export const submitMentorshipPlanUpdateToSheet = async (data: any): Promise<void> => { await sendToGAS({ method: 'POST_MENTORSHIP_PLAN', data }); };

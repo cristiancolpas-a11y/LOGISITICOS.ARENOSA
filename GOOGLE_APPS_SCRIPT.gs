@@ -241,6 +241,30 @@ function doPost(e) {
         var s = getS(ss, "LAVADOS");
         s.appendRow([d.id, d.month, d.week, d.date, d.plate, sImg(d.evidenceUrl, "LAVADO_" + d.plate), sImg(d.mapUrl, "MAPA_LAVADO_" + d.plate), d.workshop]);
       }
+      else if (m === 'POST_MENTORSHIP_PLAN') {
+        var ssP = SpreadsheetApp.openById('1yt6Hr-RIGTca21zPwq2bn1KkbpRNvEJ6lm4VL76Q_Co');
+        var s = ssP.getSheetByName("Plan_Padrino");
+        if (!s) s = ssP.insertSheet("Plan_Padrino");
+        var rows = s.getDataRange().getValues();
+        var foundIdx = -1;
+        var planId = (d.id || "").toString();
+        
+        for (var i = 1; i < rows.length; i++) {
+          if (rows[i][0] && rows[i][0].toString() === planId) {
+            foundIdx = i + 1;
+            break;
+          }
+        }
+        
+        if (foundIdx !== -1) {
+          if (d.startDate) s.getRange(foundIdx, 6).setValue(d.startDate);
+          if (d.endDate) s.getRange(foundIdx, 7).setValue(d.endDate);
+          if (d.status) s.getRange(foundIdx, 8).setValue(d.status);
+          if (d.progress !== undefined) s.getRange(foundIdx, 9).setValue(d.progress / 100);
+        } else {
+          s.appendRow([d.id, d.padrinoId, d.padrinoCode || "", d.apadrinadoId, d.apadrinadoCode || "", d.startDate || "", d.endDate || "", d.status || "Activo", (d.progress || 0) / 100]);
+        }
+      }
       else if (m === 'POST_CALIBRATION_UPDATE') {
         var s = getS(ss, "CALIBRACIONES");
         var rows = s.getDataRange().getValues();

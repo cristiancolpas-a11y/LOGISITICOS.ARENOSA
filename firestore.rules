@@ -1,0 +1,123 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+    
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+    
+    function isValidString(val, minLen, maxLen) {
+      return val is string && val.size() >= minLen && val.size() <= maxLen;
+    }
+    
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+    
+    function isValidPeopleUser(data) {
+      // Allow identification or uniqueCode for backward compatibility
+      return hasRequiredFields(['name', 'role', 'createdAt']) &&
+             data.role in ['padrino', 'apadrinado', 'admin'] &&
+             data.createdAt is string;
+    }
+    
+    function isValidMentorshipPlan(data) {
+      return hasOnlyAllowedFields(['padrinoId', 'apadrinadoId', 'startDate', 'endDate', 'status', 'progress', 'lastActivityAt', 'createdAt']) &&
+             hasRequiredFields(['padrinoId', 'apadrinadoId', 'startDate', 'endDate', 'status', 'progress', 'lastActivityAt', 'createdAt']) &&
+             isValidString(data.padrinoId, 1, 50) &&
+             isValidString(data.apadrinadoId, 1, 50) &&
+             data.startDate is string &&
+             data.endDate is string &&
+             data.status in ['Activo', 'En proceso', 'Finalizado'] &&
+             data.progress is number && data.progress >= 0 && data.progress <= 100 &&
+             data.lastActivityAt is string &&
+             data.createdAt is string;
+    }
+    
+    function isValidMentorshipTask(data) {
+      return hasOnlyAllowedFields(['planId', 'description', 'isCompleted', 'completedAt', 'createdAt']) &&
+             hasRequiredFields(['planId', 'description', 'isCompleted', 'createdAt']) &&
+             isValidString(data.planId, 1, 50) &&
+             isValidString(data.description, 1, 500) &&
+             data.isCompleted is bool &&
+             (!('completedAt' in data) || data.completedAt == null || data.completedAt is string) &&
+             data.createdAt is string;
+    }
+    
+    function isValidMentorshipMessage(data) {
+      return hasOnlyAllowedFields(['planId', 'senderId', 'text', 'attachments', 'readBy', 'createdAt']) &&
+             hasRequiredFields(['planId', 'senderId', 'text', 'attachments', 'readBy', 'createdAt']) &&
+             isValidString(data.planId, 1, 50) &&
+             isValidString(data.senderId, 1, 50) &&
+             data.text is string && data.text.size() <= 2000 &&
+             data.attachments is list && data.attachments.size() <= 5 &&
+             data.readBy is list && data.readBy.size() <= 10 &&
+             data.createdAt is string;
+    }
+    
+    function isValidMentorshipObservation(data) {
+      return hasOnlyAllowedFields(['planId', 'authorId', 'text', 'createdAt']) &&
+             hasRequiredFields(['planId', 'authorId', 'text', 'createdAt']) &&
+             isValidString(data.planId, 1, 50) &&
+             isValidString(data.authorId, 1, 50) &&
+             isValidString(data.text, 1, 2000) &&
+             data.createdAt is string;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+    
+    // For prototype purposes, we allow authenticated users (anonymous) to read/write.
+    // In a production app, we would restrict based on the user's role and ID.
+    
+    match /people_users/{userId} {
+      // Allow reading a specific user document if you know its ID (the unique code)
+      allow get: if isAuthenticated();
+      // Allow listing users (needed for admins or to select a padrino/apadrinado)
+      allow list: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidPeopleUser(request.resource.data);
+      allow update: if isAuthenticated() && isValidPeopleUser(request.resource.data);
+      allow delete: if false;
+    }
+    
+    match /mentorship_plans/{planId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidMentorshipPlan(request.resource.data);
+      allow update: if isAuthenticated() && isValidMentorshipPlan(request.resource.data);
+      allow delete: if false;
+    }
+    
+    match /mentorship_tasks/{taskId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidMentorshipTask(request.resource.data);
+      allow update: if isAuthenticated() && isValidMentorshipTask(request.resource.data);
+      allow delete: if isAuthenticated(); // Allow deleting tasks
+    }
+    
+    match /mentorship_messages/{messageId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidMentorshipMessage(request.resource.data);
+      allow update: if isAuthenticated() && isValidMentorshipMessage(request.resource.data);
+      allow delete: if false;
+    }
+    
+    match /mentorship_observations/{observationId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidMentorshipObservation(request.resource.data);
+      allow update: if isAuthenticated() && isValidMentorshipObservation(request.resource.data);
+      allow delete: if false;
+    }
+  }
+}

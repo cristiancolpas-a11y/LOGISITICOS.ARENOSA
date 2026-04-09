@@ -249,3 +249,26 @@ export interface CashlessRecord {
   fechaProgramacion: string;
   calificacion: string;
 }
+
+export interface PeopleUser {
+  id: string;
+  name: string;
+  identification: string;
+  accessCode: string;
+  role?: 'padrino' | 'apadrinado' | 'admin';
+  area?: string;
+}
+
+export interface MentorshipPlan {
+  id: string;
+  padrinoId: string;
+  padrinoCode?: string;
+  apadrinadoId: string;
+  apadrinadoCode?: string;
+  startDate: string;
+  endDate: string;
+  status: 'Activo' | 'En proceso' | 'Finalizado';
+  progress: number;
+  padrinoName?: string;
+  apadrinadoName?: string;
+}

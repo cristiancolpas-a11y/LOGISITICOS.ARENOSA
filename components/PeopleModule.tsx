@@ -1,0 +1,683 @@
+import React, { useState, useEffect } from 'react';
+import { 
+  Users, ChevronLeft, LogIn, Search, Plus, MessageSquare, 
+  CheckCircle2, Clock, Calendar, Send, Paperclip, Activity,
+  ChevronRight, Circle
+} from 'lucide-react';
+import { auth, db } from '../firebase';
+import { signInAnonymously } from 'firebase/auth';
+import { 
+  collection, query, where, getDocs, doc, getDoc, 
+  addDoc, updateDoc, onSnapshot, serverTimestamp, orderBy
+} from 'firebase/firestore';
+import { fetchPeopleUsersFromSheet, fetchMentorshipPlansFromSheet, submitMentorshipPlanUpdateToSheet } from '../services/sheetService';
+import { PeopleUser, MentorshipPlan } from '../types';
+
+interface PeopleModuleProps {
+  onBack: () => void;
+}
+
+const PeopleModule: React.FC<PeopleModuleProps> = ({ onBack }) => {
+  const [user, setUser] = useState<any>(null);
+  const [loginCode, setLoginCode] = useState('');
+  const [loginError, setLoginError] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  
+  const [plans, setPlans] = useState<any[]>([]);
+  const [activePlan, setActivePlan] = useState<any>(null);
+  
+  const [tasks, setTasks] = useState<any[]>([]);
+  const [messages, setMessages] = useState<any[]>([]);
+  const [newMessage, setNewMessage] = useState('');
+  const [newTaskDesc, setNewTaskDesc] = useState('');
+  const [isAddingTask, setIsAddingTask] = useState(false);
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const code = loginCode.trim();
+    if (!code) return;
+    
+    setIsLoading(true);
+    setLoginError('');
+    
+    try {
+      // 0. Check for Master Code
+      if (code === '2026') {
+        setUser({
+          id: 'master_admin',
+          name: 'Administrador Master',
+          identification: 'MASTER',
+          role: 'admin',
+          area: 'DIRECCIÓN'
+        });
+        setIsLoading(false);
+        return;
+      }
+
+      const codeLower = code.toLowerCase();
+      // Ensure we are authenticated anonymously before proceeding
+      if (!auth.currentUser) {
+        await signInAnonymously(auth);
+      }
+
+      // 1. Fetch plans to check for codes
+      const sheetPlans = await fetchMentorshipPlansFromSheet();
+      console.log("Planes cargados:", sheetPlans.length);
+      
+      let foundIdentification = '';
+      let foundRole: 'padrino' | 'apadrinado' | 'admin' = 'apadrinado';
+      
+      const planAsPadrino = sheetPlans.find(p => p.padrinoCode?.trim().toLowerCase() === codeLower);
+      const planAsApadrinado = sheetPlans.find(p => p.apadrinadoCode?.trim().toLowerCase() === codeLower);
+      
+      if (planAsPadrino) {
+        foundIdentification = planAsPadrino.padrinoId;
+        foundRole = 'padrino';
+      } else if (planAsApadrinado) {
+        foundIdentification = planAsApadrinado.apadrinadoId;
+        foundRole = 'apadrinado';
+      }
+      
+      // 2. If not found in plans, check in People sheet (for Admins or others)
+      let foundName = '';
+      let foundArea = 'GENERAL';
+      
+      const sheetUsers = await fetchPeopleUsersFromSheet();
+      console.log("Usuarios base cargados:", sheetUsers.length);
+      
+      const userFromSheet = sheetUsers.find(u => 
+        (foundIdentification && u.identification === foundIdentification) || 
+        (!foundIdentification && u.accessCode.trim().toLowerCase() === codeLower)
+      );
+
+      if (userFromSheet) {
+        foundIdentification = userFromSheet.identification;
+        foundName = userFromSheet.name;
+        foundArea = userFromSheet.area || 'GENERAL';
+        if (!planAsPadrino && !planAsApadrinado) {
+          foundRole = userFromSheet.role as any || 'apadrinado';
+        }
+      } else if (!foundIdentification) {
+        setLoginError('Código inválido. Por favor, verifique su hoja de cálculo.');
+        setIsLoading(false);
+        return;
+      } else {
+        foundName = `Usuario ${foundIdentification}`;
+      }
+      
+      // 3. Sync with Firestore
+      const usersRef = collection(db, 'people_users');
+      const q = query(usersRef, where('identification', '==', foundIdentification));
+      const querySnapshot = await getDocs(q);
+      
+      console.log("Sincronizando con Firestore para ID:", foundIdentification);
+      
+      let finalUser;
+      if (querySnapshot.empty) {
+        const newUser = {
+          identification: foundIdentification,
+          name: foundName,
+          role: foundRole,
+          area: foundArea,
+          createdAt: new Date().toISOString()
+        };
+        console.log("Creando nuevo usuario en Firestore:", newUser);
+        const docRef = await addDoc(usersRef, newUser);
+        finalUser = { id: docRef.id, ...newUser };
+      } else {
+        const existingDoc = querySnapshot.docs[0];
+        const existingData = existingDoc.data();
+        
+        console.log("Usuario existente encontrado en Firestore:", existingDoc.id);
+        
+        if (existingData.role !== foundRole || existingData.name !== foundName || existingData.area !== foundArea) {
+          console.log("Actualizando datos de usuario...");
+          await updateDoc(doc(db, 'people_users', existingDoc.id), {
+            role: foundRole,
+            name: foundName,
+            area: foundArea
+          });
+        }
+        
+        finalUser = { 
+          id: existingDoc.id, 
+          ...existingData, 
+          role: foundRole, 
+          name: foundName, 
+          area: foundArea 
+        };
+      }
+      
+      setUser(finalUser);
+    } catch (error: any) {
+      console.error("Login error detail:", error);
+      if (error.code === 'permission-denied') {
+        setLoginError('Error de permisos en la base de datos.');
+      } else {
+        setLoginError('Error al conectar con el servidor o las hojas.');
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!user) return;
+
+    const loadPlans = async () => {
+      try {
+        const sheetPlans = await fetchMentorshipPlansFromSheet();
+        console.log("Todos los planes de la hoja:", sheetPlans);
+        
+        let userPlans = [];
+        if (user.role === 'admin') {
+          userPlans = sheetPlans;
+        } else {
+          userPlans = sheetPlans.filter(p => 
+            p.padrinoId === user.identification || p.apadrinadoId === user.identification
+          );
+        }
+        console.log("Planes para mostrar:", userPlans);
+
+        // Fetch user names for the plans
+        const sheetUsers = await fetchPeopleUsersFromSheet();
+        
+        const enrichedPlans = userPlans.map(plan => {
+          const isPadrino = user.identification === plan.padrinoId;
+          const otherId = isPadrino ? plan.apadrinadoId : plan.padrinoId;
+          
+          // For admins, we might want to show both names or just the apadrinado
+          const apadrinadoUser = sheetUsers.find(u => u.identification.trim() === plan.apadrinadoId.trim());
+          const padrinoUser = sheetUsers.find(u => u.identification.trim() === plan.padrinoId.trim());
+          
+          return {
+            ...plan,
+            padrinoName: padrinoUser?.name || `ID: ${plan.padrinoId}`,
+            apadrinadoName: apadrinadoUser?.name || `ID: ${plan.apadrinadoId}`,
+            otherUser: user.role === 'admin' 
+              ? { name: apadrinadoUser?.name || plan.apadrinadoId, area: apadrinadoUser?.area || 'Operaciones' }
+              : (isPadrino 
+                  ? { name: apadrinadoUser?.name || plan.apadrinadoId, area: apadrinadoUser?.area || 'Operaciones' }
+                  : { name: padrinoUser?.name || plan.padrinoId, area: padrinoUser?.area || 'Operaciones' }
+                )
+          };
+        });
+
+        setPlans(enrichedPlans);
+
+        // If apadrinado has exactly one active plan, enter directly
+        if (user.role === 'apadrinado' && enrichedPlans.length === 1 && enrichedPlans[0].status === 'Activo') {
+          setActivePlan(enrichedPlans[0]);
+        }
+      } catch (error) {
+        console.error("Error loading plans:", error);
+      }
+    };
+
+    loadPlans();
+    const interval = setInterval(loadPlans, 30000); // Refresh every 30s
+    return () => clearInterval(interval);
+  }, [user]);
+
+  useEffect(() => {
+    if (!activePlan) return;
+
+    const tasksRef = collection(db, 'mentorship_tasks');
+    const qTasks = query(tasksRef, where('planId', '==', activePlan.id), orderBy('createdAt', 'asc'));
+    const unsubTasks = onSnapshot(qTasks, (snapshot) => {
+      setTasks(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
+
+    const msgsRef = collection(db, 'mentorship_messages');
+    const qMsgs = query(msgsRef, where('planId', '==', activePlan.id), orderBy('createdAt', 'asc'));
+    const unsubMsgs = onSnapshot(qMsgs, (snapshot) => {
+      setMessages(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
+
+    return () => {
+      unsubTasks();
+      unsubMsgs();
+    };
+  }, [activePlan]);
+
+  const handleSendMessage = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newMessage.trim() || !activePlan) return;
+
+    try {
+      await addDoc(collection(db, 'mentorship_messages'), {
+        planId: activePlan.id,
+        senderId: user.id,
+        text: newMessage.trim(),
+        attachments: [],
+        readBy: [user.id],
+        createdAt: new Date().toISOString()
+      });
+      
+      await updateDoc(doc(db, 'mentorship_plans', activePlan.id), {
+        lastActivityAt: new Date().toISOString()
+      });
+      
+      setNewMessage('');
+    } catch (error) {
+      console.error("Error sending message:", error);
+    }
+  };
+
+  const handleToggleTask = async (task: any) => {
+    if (user.role !== 'padrino' && user.role !== 'admin') return; // Only padrino or admin can validate tasks
+    
+    try {
+      const isCompleted = !task.isCompleted;
+      await updateDoc(doc(db, 'mentorship_tasks', task.id), {
+        isCompleted,
+        completedAt: isCompleted ? new Date().toISOString() : null
+      });
+
+      // Recalculate progress
+      const updatedTasks = tasks.map(t => t.id === task.id ? { ...t, isCompleted } : t);
+      const completedCount = updatedTasks.filter(t => t.isCompleted).length;
+      const progress = updatedTasks.length > 0 ? Math.round((completedCount / updatedTasks.length) * 100) : 0;
+
+      await updateDoc(doc(db, 'mentorship_plans', activePlan.id), {
+        progress,
+        lastActivityAt: new Date().toISOString()
+      });
+
+      // Update Sheet
+      await submitMentorshipPlanUpdateToSheet({
+        id: activePlan.id,
+        progress: progress
+      });
+    } catch (error) {
+      console.error("Error toggling task:", error);
+    }
+  };
+
+  const handleAddTask = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newTaskDesc.trim() || !activePlan || (user.role !== 'padrino' && user.role !== 'admin')) return;
+
+    try {
+      await addDoc(collection(db, 'mentorship_tasks'), {
+        planId: activePlan.id,
+        description: newTaskDesc.trim(),
+        isCompleted: false,
+        createdAt: new Date().toISOString()
+      });
+      
+      setNewTaskDesc('');
+      setIsAddingTask(false);
+      
+      // Recalculate progress
+      const newTotal = tasks.length + 1;
+      const completedCount = tasks.filter(t => t.isCompleted).length;
+      const progress = Math.round((completedCount / newTotal) * 100);
+      
+      await updateDoc(doc(db, 'mentorship_plans', activePlan.id), {
+        progress,
+        lastActivityAt: new Date().toISOString()
+      });
+
+      // Update Sheet
+      await submitMentorshipPlanUpdateToSheet({
+        id: activePlan.id,
+        progress: progress
+      });
+    } catch (error) {
+      console.error("Error adding task:", error);
+    }
+  };
+
+  const handleUpdateStartDate = async (date: string) => {
+    if (!activePlan || (user.role !== 'padrino' && user.role !== 'admin')) return;
+    try {
+      await updateDoc(doc(db, 'mentorship_plans', activePlan.id), {
+        startDate: date,
+        lastActivityAt: new Date().toISOString()
+      });
+      
+      await submitMentorshipPlanUpdateToSheet({
+        id: activePlan.id,
+        startDate: date
+      });
+      
+      setActivePlan({ ...activePlan, startDate: date });
+    } catch (error) {
+      console.error("Error updating start date:", error);
+    }
+  };
+
+  if (!user) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full max-w-md mx-auto p-6">
+        <div className="w-24 h-24 bg-blue-500/10 rounded-full flex items-center justify-center mb-8 border-4 border-blue-500/20">
+          <Users size={48} className="text-blue-500" />
+        </div>
+        <h2 className="text-3xl font-black text-slate-800 uppercase tracking-tight mb-2 text-center">Acceso People</h2>
+        <p className="text-slate-500 text-xs font-bold uppercase tracking-widest text-center mb-8">
+          Ingrese su código único para continuar
+        </p>
+        
+        <form onSubmit={handleLogin} className="w-full space-y-4">
+          <div>
+            <input
+              type="text"
+              placeholder="CÓDIGO DE ACCESO"
+              value={loginCode}
+              onChange={(e) => setLoginCode(e.target.value)}
+              className="w-full bg-white border-2 border-slate-200 rounded-2xl px-6 py-4 text-center text-xl font-black uppercase tracking-widest outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/20 transition-all"
+            />
+          </div>
+          {loginError && (
+            <p className="text-rose-500 text-xs font-bold text-center uppercase">{loginError}</p>
+          )}
+          <button
+            type="submit"
+            disabled={isLoading}
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white rounded-2xl px-6 py-4 font-black uppercase tracking-widest text-sm transition-all flex items-center justify-center gap-3 shadow-lg shadow-blue-500/30 disabled:opacity-50"
+          >
+            {isLoading ? 'Verificando...' : <><LogIn size={20} /> Ingresar</>}
+          </button>
+        </form>
+        
+        <button 
+          onClick={onBack}
+          className="mt-8 text-slate-400 hover:text-slate-600 text-xs font-bold uppercase tracking-widest flex items-center gap-2 transition-colors"
+        >
+          <ChevronLeft size={16} /> Volver al menú principal
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col h-full">
+      <div className="flex items-center justify-between mb-8 bg-white p-6 rounded-3xl border shadow-sm shrink-0">
+        <div className="flex items-center gap-4">
+          <div className="w-12 h-12 bg-blue-100 rounded-2xl flex items-center justify-center text-blue-600">
+            <Users size={24} />
+          </div>
+          <div>
+            <h2 className="text-2xl font-black text-slate-800 uppercase tracking-tight">Plan Padrino</h2>
+            <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest">
+              {user.name} • {user.role}
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-4">
+          <button 
+            onClick={() => setUser(null)}
+            className="px-4 py-2 bg-slate-100 text-slate-600 rounded-xl font-black uppercase tracking-widest text-[10px] hover:bg-slate-200 transition-all"
+          >
+            Cerrar Sesión
+          </button>
+        </div>
+      </div>
+      
+      <div className="flex-grow bg-white rounded-3xl border shadow-sm overflow-hidden flex flex-col">
+        {!activePlan ? (
+          <div className="p-8 h-full overflow-y-auto custom-scrollbar">
+            <div className="flex items-center justify-between mb-8">
+              <div>
+                <h3 className="text-xl font-black text-slate-800 uppercase tracking-tight">
+                  {user.role === 'admin' ? 'Panel de Control Master' : 'Mis Planes de Mentoría'}
+                </h3>
+                <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest">
+                  {user.role === 'admin' ? 'Seguimiento global de todos los procesos' : (user.role === 'padrino' ? 'Colaboradores a tu cargo' : 'Tu proceso de formación')}
+                </p>
+              </div>
+              {user.role === 'admin' && (
+                <button className="px-4 py-2 bg-blue-600 text-white rounded-xl font-black uppercase tracking-widest text-[10px] hover:bg-blue-700 transition-all flex items-center gap-2">
+                  <Plus size={16} /> Nuevo Plan
+                </button>
+              )}
+            </div>
+
+            {plans.length === 0 ? (
+              <div className="text-center py-20">
+                <Users size={48} className="text-slate-200 mx-auto mb-4" />
+                <p className="text-slate-400 font-bold uppercase tracking-widest text-xs">No tienes planes activos en este momento</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {plans.map(plan => (
+                  <div 
+                    key={plan.id}
+                    onClick={() => setActivePlan(plan)}
+                    className="border-2 border-slate-100 rounded-3xl p-6 hover:border-blue-500 hover:shadow-lg transition-all cursor-pointer group"
+                  >
+                    <div className="flex items-center justify-between mb-4">
+                      <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest ${
+                        plan.status === 'Activo' ? 'bg-emerald-100 text-emerald-600' :
+                        plan.status === 'En proceso' ? 'bg-amber-100 text-amber-600' :
+                        'bg-slate-100 text-slate-600'
+                      }`}>
+                        {plan.status}
+                      </span>
+                      <span className="text-slate-400 text-[10px] font-bold flex items-center gap-1">
+                        <Calendar size={12} /> {plan.endDate}
+                      </span>
+                    </div>
+                    
+                    <div className="mb-6">
+                      <h4 className="text-lg font-black text-slate-800 uppercase leading-tight group-hover:text-blue-600 transition-colors">
+                        {user.role === 'admin' ? plan.apadrinadoName : (plan.otherUser?.name || 'Usuario Desconocido')}
+                      </h4>
+                      <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest">
+                        {user.role === 'admin' 
+                          ? `Padrino: ${plan.padrinoName}` 
+                          : `${user.role === 'padrino' ? 'Apadrinado' : 'Padrino'} • ${plan.otherUser?.area || 'Sin área'}`
+                        }
+                      </p>
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="flex justify-between text-[10px] font-black uppercase tracking-widest">
+                        <span className="text-slate-500">Avance</span>
+                        <span className="text-blue-600">{plan.progress}%</span>
+                      </div>
+                      <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                        <div 
+                          className="h-full bg-blue-500 transition-all duration-1000"
+                          style={{ width: `${plan.progress}%` }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="flex flex-col h-full">
+            {/* Plan Header */}
+            <div className="p-6 border-b border-slate-100 flex items-center justify-between shrink-0 bg-slate-50/50">
+              <div className="flex items-center gap-4">
+                <button 
+                  onClick={() => setActivePlan(null)}
+                  className="p-2 hover:bg-slate-200 rounded-xl transition-colors text-slate-400"
+                >
+                  <ChevronLeft size={20} />
+                </button>
+                <div>
+                  <h3 className="text-lg font-black text-slate-800 uppercase tracking-tight">
+                    {user.role === 'admin' ? `${activePlan.apadrinadoName} (Apadrinado)` : (activePlan.otherUser?.name || 'Usuario Desconocido')}
+                  </h3>
+                  <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest">
+                    {user.role === 'admin' ? `Padrino: ${activePlan.padrinoName}` : 'Plan de Formación • ' + activePlan.status}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-4">
+                <div className="text-right">
+                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Progreso</div>
+                  <div className="text-xl font-black text-blue-600">{activePlan.progress}%</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Plan Content */}
+            <div className="flex-grow flex overflow-hidden">
+              {/* Left Column: Tasks & Details */}
+              <div className="w-1/2 border-r border-slate-100 p-6 overflow-y-auto custom-scrollbar flex flex-col gap-8">
+                <div>
+                  <h4 className="text-sm font-black text-slate-800 uppercase tracking-widest mb-4 flex items-center gap-2">
+                    <Calendar size={16} className="text-blue-500" /> Detalles del Plan
+                  </h4>
+                  <div className="bg-slate-50 rounded-2xl p-4 space-y-4 border border-slate-100">
+                    <div className="flex justify-between items-center">
+                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Fecha Inicio</span>
+                      {activePlan.startDate ? (
+                        <span className="text-xs font-bold text-slate-700">{activePlan.startDate}</span>
+                      ) : (user.role === 'padrino' || user.role === 'admin') ? (
+                        <input 
+                          type="date" 
+                          onChange={(e) => handleUpdateStartDate(e.target.value)}
+                          className="text-xs bg-white border border-slate-200 rounded-lg px-2 py-1 outline-none focus:border-blue-500"
+                        />
+                      ) : (
+                        <span className="text-xs font-bold text-slate-400 italic">Pendiente</span>
+                      )}
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Fecha Fin</span>
+                      <span className="text-xs font-bold text-slate-700">{activePlan.endDate || 'N/A'}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <h4 className="text-sm font-black text-slate-800 uppercase tracking-widest mb-4 flex items-center gap-2">
+                    <CheckCircle2 size={16} className="text-blue-500" /> Tareas y Habilidades
+                  </h4>
+                  <div className="space-y-3">
+                    {tasks.length === 0 ? (
+                      <p className="text-xs text-slate-400 italic">No hay tareas asignadas aún.</p>
+                    ) : (
+                      tasks.map(task => (
+                        <div 
+                          key={task.id} 
+                          className={`flex items-start gap-3 p-4 rounded-2xl border ${
+                            task.isCompleted ? 'bg-emerald-50 border-emerald-100' : 'bg-slate-50 border-slate-100'
+                          }`}
+                        >
+                          <button 
+                            onClick={() => handleToggleTask(task)}
+                            disabled={user.role !== 'padrino' && user.role !== 'admin'}
+                            className={`mt-0.5 transition-colors ${
+                              task.isCompleted ? 'text-emerald-500' : 'text-slate-300 hover:text-emerald-500'
+                            } ${(user.role !== 'padrino' && user.role !== 'admin') ? 'cursor-default' : 'cursor-pointer'}`}
+                          >
+                            {task.isCompleted ? <CheckCircle2 size={18} /> : <Circle size={18} />}
+                          </button>
+                          <div>
+                            <p className={`text-xs font-bold ${task.isCompleted ? 'text-slate-700 line-through opacity-70' : 'text-slate-700'}`}>
+                              {task.description}
+                            </p>
+                            <p className={`text-[9px] font-black uppercase tracking-widest mt-1 ${
+                              task.isCompleted ? 'text-emerald-600' : 'text-slate-400'
+                            }`}>
+                              {task.isCompleted ? 'Completado' : 'Pendiente'}
+                            </p>
+                          </div>
+                        </div>
+                      ))
+                    )}
+
+                    {(user.role === 'padrino' || user.role === 'admin') && (
+                      isAddingTask ? (
+                        <form onSubmit={handleAddTask} className="mt-4 flex gap-2">
+                          <input 
+                            type="text" 
+                            value={newTaskDesc}
+                            onChange={(e) => setNewTaskDesc(e.target.value)}
+                            placeholder="Descripción de la tarea..."
+                            className="flex-grow bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none focus:border-blue-500"
+                            autoFocus
+                          />
+                          <button type="submit" className="bg-blue-600 text-white p-2 rounded-xl hover:bg-blue-700">
+                            <Plus size={16} />
+                          </button>
+                          <button type="button" onClick={() => setIsAddingTask(false)} className="bg-slate-200 text-slate-600 p-2 rounded-xl hover:bg-slate-300">
+                            Cancelar
+                          </button>
+                        </form>
+                      ) : (
+                        <button 
+                          onClick={() => setIsAddingTask(true)}
+                          className="mt-4 w-full py-3 border-2 border-dashed border-slate-200 rounded-2xl text-slate-400 hover:text-blue-600 hover:border-blue-200 transition-colors flex items-center justify-center gap-2 text-xs font-bold uppercase tracking-widest"
+                        >
+                          <Plus size={16} /> Agregar Tarea
+                        </button>
+                      )
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Right Column: Chat */}
+              <div className="w-1/2 flex flex-col bg-slate-50/30">
+                <div className="p-4 border-b border-slate-100 bg-white shrink-0">
+                  <h4 className="text-sm font-black text-slate-800 uppercase tracking-widest flex items-center gap-2">
+                    <MessageSquare size={16} className="text-blue-500" /> Chat del Plan
+                  </h4>
+                </div>
+                
+                <div className="flex-grow p-6 overflow-y-auto custom-scrollbar flex flex-col gap-4">
+                  {messages.length === 0 ? (
+                    <div className="text-center py-10">
+                      <MessageSquare size={32} className="text-slate-200 mx-auto mb-2" />
+                      <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">No hay mensajes aún</p>
+                    </div>
+                  ) : (
+                    messages.map(msg => {
+                      const isMine = msg.senderId === user.id;
+                      const timeString = new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                      return (
+                        <div key={msg.id} className={`flex flex-col gap-1 ${isMine ? 'items-end' : 'items-start'}`}>
+                          <div className={`px-4 py-3 max-w-[80%] shadow-sm ${
+                            isMine 
+                              ? 'bg-blue-600 text-white rounded-2xl rounded-tr-none' 
+                              : 'bg-white border border-slate-200 rounded-2xl rounded-tl-none'
+                          }`}>
+                            <p className={`text-xs ${isMine ? 'text-white' : 'text-slate-700'}`}>{msg.text}</p>
+                          </div>
+                          <span className="text-[9px] font-bold text-slate-400 uppercase">{timeString}</span>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+
+                <div className="p-4 bg-white border-t border-slate-100 shrink-0">
+                  <form onSubmit={handleSendMessage} className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-2xl p-2 focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/20 transition-all">
+                    <button type="button" className="p-2 text-slate-400 hover:text-blue-600 transition-colors">
+                      <Paperclip size={18} />
+                    </button>
+                    <input 
+                      type="text" 
+                      value={newMessage}
+                      onChange={(e) => setNewMessage(e.target.value)}
+                      placeholder="Escribe un mensaje..." 
+                      className="flex-grow bg-transparent text-xs outline-none px-2"
+                    />
+                    <button 
+                      type="submit" 
+                      disabled={!newMessage.trim()}
+                      className="p-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-50"
+                    >
+                      <Send size={16} />
+                    </button>
+                  </form>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+export default PeopleModule;

@@ -1,0 +1,94 @@
+{
+  "entities": {
+    "PeopleUser": {
+      "title": "PeopleUser",
+      "description": "A user in the People module (Padrino, Apadrinado, or Admin)",
+      "type": "object",
+      "properties": {
+        "uniqueCode": { "type": "string", "description": "Unique login code for the user" },
+        "name": { "type": "string", "description": "Full name of the user" },
+        "role": { "type": "string", "enum": ["padrino", "apadrinado", "admin"], "description": "Role in the mentorship program" },
+        "area": { "type": "string", "description": "Department or area" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uniqueCode", "name", "role", "createdAt"]
+    },
+    "MentorshipPlan": {
+      "title": "MentorshipPlan",
+      "description": "A mentorship plan linking a padrino and an apadrinado",
+      "type": "object",
+      "properties": {
+        "padrinoId": { "type": "string", "description": "ID of the padrino user" },
+        "apadrinadoId": { "type": "string", "description": "ID of the apadrinado user" },
+        "startDate": { "type": "string", "format": "date" },
+        "endDate": { "type": "string", "format": "date" },
+        "status": { "type": "string", "enum": ["Activo", "En proceso", "Finalizado"] },
+        "progress": { "type": "number", "description": "Percentage of tasks completed (0-100)" },
+        "lastActivityAt": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["padrinoId", "apadrinadoId", "startDate", "endDate", "status", "progress", "lastActivityAt", "createdAt"]
+    },
+    "MentorshipTask": {
+      "title": "MentorshipTask",
+      "description": "A task or skill to be completed in a mentorship plan",
+      "type": "object",
+      "properties": {
+        "planId": { "type": "string", "description": "ID of the associated mentorship plan" },
+        "description": { "type": "string", "description": "Description of the task or skill" },
+        "isCompleted": { "type": "boolean" },
+        "completedAt": { "type": "string", "format": "date-time", "description": "When the task was completed" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["planId", "description", "isCompleted", "createdAt"]
+    },
+    "MentorshipMessage": {
+      "title": "MentorshipMessage",
+      "description": "A chat message within a mentorship plan",
+      "type": "object",
+      "properties": {
+        "planId": { "type": "string" },
+        "senderId": { "type": "string" },
+        "text": { "type": "string" },
+        "attachments": { "type": "array", "items": { "type": "string" } },
+        "readBy": { "type": "array", "items": { "type": "string" } },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["planId", "senderId", "text", "attachments", "readBy", "createdAt"]
+    },
+    "MentorshipObservation": {
+      "title": "MentorshipObservation",
+      "description": "An observation or evaluation note for a mentorship plan",
+      "type": "object",
+      "properties": {
+        "planId": { "type": "string" },
+        "authorId": { "type": "string" },
+        "text": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["planId", "authorId", "text", "createdAt"]
+    }
+  },
+  "firestore": {
+    "people_users": {
+      "schema": { "$ref": "#/entities/PeopleUser" },
+      "description": "Users of the People module"
+    },
+    "mentorship_plans": {
+      "schema": { "$ref": "#/entities/MentorshipPlan" },
+      "description": "Mentorship plans (Plan Padrino)"
+    },
+    "mentorship_tasks": {
+      "schema": { "$ref": "#/entities/MentorshipTask" },
+      "description": "Tasks for mentorship plans"
+    },
+    "mentorship_messages": {
+      "schema": { "$ref": "#/entities/MentorshipMessage" },
+      "description": "Chat messages for mentorship plans"
+    },
+    "mentorship_observations": {
+      "schema": { "$ref": "#/entities/MentorshipObservation" },
+      "description": "Observations for mentorship plans"
+    }
+  }
+}
