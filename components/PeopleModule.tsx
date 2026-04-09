@@ -7,8 +7,9 @@ import {
 import { auth, db } from '../firebase';
 import { signInAnonymously } from 'firebase/auth';
 import { 
-  collection, query, where, getDocs, doc, getDoc, 
-  addDoc, updateDoc, onSnapshot, serverTimestamp, orderBy
+  collection, query, where, getDocs, doc, getDoc, setDoc,
+  addDoc, updateDoc, deleteDoc, onSnapshot, serverTimestamp, orderBy,
+  writeBatch
 } from 'firebase/firestore';
 import { fetchPeopleUsersFromSheet, fetchMentorshipPlansFromSheet, submitMentorshipPlanUpdateToSheet } from '../services/sheetService';
 import { PeopleUser, MentorshipPlan } from '../types';
@@ -31,6 +32,7 @@ const PeopleModule: React.FC<PeopleModuleProps> = ({ onBack }) => {
   const [newMessage, setNewMessage] = useState('');
   const [newTaskDesc, setNewTaskDesc] = useState('');
   const [isAddingTask, setIsAddingTask] = useState(false);
+  const [showConfirmClear, setShowConfirmClear] = useState(false);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -240,27 +242,73 @@ const PeopleModule: React.FC<PeopleModuleProps> = ({ onBack }) => {
     };
   }, [activePlan]);
 
-  const handleSendMessage = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newMessage.trim() || !activePlan) return;
+  const handleSendMessage = async (e?: React.FormEvent | React.KeyboardEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    
+    const text = newMessage.trim();
+    if (!text || !activePlan) return;
+
+    // Clear state immediately and don't look back
+    setNewMessage('');
 
     try {
+      // 1. Add the message
       await addDoc(collection(db, 'mentorship_messages'), {
         planId: activePlan.id,
         senderId: user.id,
-        text: newMessage.trim(),
+        text: text,
         attachments: [],
         readBy: [user.id],
         createdAt: new Date().toISOString()
       });
       
-      await updateDoc(doc(db, 'mentorship_plans', activePlan.id), {
-        lastActivityAt: new Date().toISOString()
+      // 2. Update plan activity
+      try {
+        await setDoc(doc(db, 'mentorship_plans', activePlan.id), {
+          lastActivityAt: new Date().toISOString(),
+          planId: activePlan.id
+        }, { merge: true });
+      } catch (planErr) {
+        console.warn("Non-critical: Could not update plan activity timestamp", planErr);
+      }
+    } catch (error) {
+      console.error("Critical: Error sending message:", error);
+      // Only restore if the message definitely wasn't sent
+      // and only if the current input is still empty
+      setNewMessage(prev => prev === '' ? text : prev); 
+    }
+  };
+
+  const handleClearChat = async () => {
+    if (user.role !== 'admin' || !activePlan) return;
+    
+    console.log("Iniciando limpieza de chat para plan:", activePlan.id);
+    try {
+      const msgsRef = collection(db, 'mentorship_messages');
+      const q = query(msgsRef, where('planId', '==', activePlan.id));
+      const snapshot = await getDocs(q);
+      
+      if (snapshot.empty) {
+        console.log("No se encontraron mensajes para borrar.");
+        setShowConfirmClear(false);
+        return;
+      }
+
+      console.log(`Borrando ${snapshot.size} mensajes...`);
+      const batch = writeBatch(db);
+      snapshot.docs.forEach((doc) => {
+        batch.delete(doc.ref);
       });
       
-      setNewMessage('');
+      await batch.commit();
+      console.log("Chat limpiado con éxito.");
+      setShowConfirmClear(false);
     } catch (error) {
-      console.error("Error sending message:", error);
+      console.error("Error al limpiar el chat:", error);
+      alert("Hubo un error al limpiar el chat. Revisa la consola.");
     }
   };
 
@@ -618,10 +666,38 @@ const PeopleModule: React.FC<PeopleModuleProps> = ({ onBack }) => {
 
               {/* Right Column: Chat */}
               <div className="w-1/2 flex flex-col bg-slate-50/30">
-                <div className="p-4 border-b border-slate-100 bg-white shrink-0">
+                <div className="p-4 border-b border-slate-100 bg-white shrink-0 flex items-center justify-between">
                   <h4 className="text-sm font-black text-slate-800 uppercase tracking-widest flex items-center gap-2">
                     <MessageSquare size={16} className="text-blue-500" /> Chat del Plan
                   </h4>
+                  {user.role === 'admin' && (
+                    <div className="flex items-center gap-2">
+                      {showConfirmClear ? (
+                        <div className="flex items-center gap-2 bg-rose-50 p-1 rounded-lg border border-rose-100">
+                          <span className="text-[8px] font-bold text-rose-600 uppercase">¿Borrar todo?</span>
+                          <button 
+                            onClick={handleClearChat}
+                            className="text-[9px] font-black bg-rose-500 text-white px-2 py-1 rounded-md hover:bg-rose-600 transition-colors"
+                          >
+                            Sí
+                          </button>
+                          <button 
+                            onClick={() => setShowConfirmClear(false)}
+                            className="text-[9px] font-black bg-slate-200 text-slate-600 px-2 py-1 rounded-md hover:bg-slate-300 transition-colors"
+                          >
+                            No
+                          </button>
+                        </div>
+                      ) : (
+                        <button 
+                          onClick={() => setShowConfirmClear(true)}
+                          className="text-[9px] font-black text-rose-500 uppercase tracking-widest hover:bg-rose-50 px-2 py-1 rounded-lg transition-colors border border-transparent hover:border-rose-100"
+                        >
+                          Limpiar Chat
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
                 
                 <div className="flex-grow p-6 overflow-y-auto custom-scrollbar flex flex-col gap-4">
@@ -659,6 +735,13 @@ const PeopleModule: React.FC<PeopleModuleProps> = ({ onBack }) => {
                       type="text" 
                       value={newMessage}
                       onChange={(e) => setNewMessage(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          handleSendMessage(e);
+                        }
+                      }}
                       placeholder="Escribe un mensaje..." 
                       className="flex-grow bg-transparent text-xs outline-none px-2"
                     />

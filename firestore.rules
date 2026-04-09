@@ -110,7 +110,7 @@ service cloud.firestore {
       allow read: if isAuthenticated();
       allow create: if isAuthenticated() && isValidMentorshipMessage(request.resource.data);
       allow update: if isAuthenticated() && isValidMentorshipMessage(request.resource.data);
-      allow delete: if false;
+      allow delete: if isAuthenticated();
     }
     
     match /mentorship_observations/{observationId} {
