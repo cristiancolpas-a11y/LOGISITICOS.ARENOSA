@@ -441,9 +441,9 @@ const PeopleModule: React.FC<PeopleModuleProps> = ({ onBack }) => {
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {plans.map(plan => (
+                {plans.map((plan, index) => (
                   <div 
-                    key={plan.id}
+                    key={`${plan.id}-${index}`}
                     onClick={() => setActivePlan(plan)}
                     className="border-2 border-slate-100 rounded-3xl p-6 hover:border-blue-500 hover:shadow-lg transition-all cursor-pointer group"
                   >

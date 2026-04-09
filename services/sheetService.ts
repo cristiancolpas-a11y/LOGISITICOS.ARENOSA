@@ -1081,8 +1081,8 @@ export const fetchMentorshipPlansFromSheet = async (): Promise<MentorshipPlan[]>
           
           const plans = rows.slice(1)
             .filter(row => row && row[1] && row[3]) // Padrino_ID y Apadrinado_ID
-            .map((row): MentorshipPlan => ({
-              id: cleanSheetValue(row[0]),
+            .map((row, i): MentorshipPlan => ({
+              id: cleanSheetValue(row[0]) ? `${cleanSheetValue(row[0])}-${i}` : `plan-${i}`,
               padrinoId: cleanSheetValue(row[1]),
               padrinoCode: cleanSheetValue(row[2]),
               apadrinadoId: cleanSheetValue(row[3]),
