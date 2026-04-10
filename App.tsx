@@ -81,8 +81,12 @@ const App: React.FC = () => {
               }}
               className="group relative bg-white/5 hover:bg-white/10 border border-white/10 p-8 rounded-[3rem] transition-all flex items-center gap-6 text-left active:scale-95"
             >
-              <div className="w-20 h-20 bg-blue-600/20 rounded-3xl flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform shadow-lg shadow-blue-500/10">
-                <Users size={36} className="text-blue-500" />
+              <div className="w-20 h-20 bg-slate-50 rounded-3xl flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform shadow-lg shadow-white/10 overflow-hidden p-2 relative">
+                <img 
+                  src="https://lh3.googleusercontent.com/d/1RpVUh4KZ0s0tBpPynwFuwjiVqT0ddSDM" 
+                  alt="People Logo" 
+                  className="w-full h-full object-contain relative z-10"
+                />
               </div>
               <div>
                 <div className="text-2xl font-black text-white uppercase tracking-tight leading-tight">People</div>

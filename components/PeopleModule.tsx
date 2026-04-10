@@ -19,6 +19,7 @@ interface PeopleModuleProps {
 }
 
 const PeopleModule: React.FC<PeopleModuleProps> = ({ onBack }) => {
+  const [activeSection, setActiveSection] = useState<'menu' | 'plan-padrino'>('menu');
   const [user, setUser] = useState<any>(null);
   const [loginCode, setLoginCode] = useState('');
   const [loginError, setLoginError] = useState('');
@@ -483,14 +484,80 @@ const PeopleModule: React.FC<PeopleModuleProps> = ({ onBack }) => {
     }
   };
 
+  if (activeSection === 'menu') {
+    return (
+      <div className="flex flex-col h-full max-w-4xl mx-auto p-8 bg-[#082032]">
+        <div className="flex items-center justify-between mb-12">
+          <div className="flex items-center gap-6">
+            <div className="w-20 h-20 bg-[#2C394B] rounded-3xl flex items-center justify-center shadow-xl border border-[#334756] overflow-hidden p-2 relative">
+              <img 
+                src="https://lh3.googleusercontent.com/d/1RpVUh4KZ0s0tBpPynwFuwjiVqT0ddSDM" 
+                alt="People Logo" 
+                className="w-full h-full object-contain relative z-10"
+              />
+            </div>
+            <div>
+              <h1 className="text-4xl font-black text-white uppercase tracking-tight">People</h1>
+              <p className="text-slate-400 font-bold uppercase tracking-widest text-xs mt-1">Gestión de Talento Humano</p>
+            </div>
+          </div>
+          <button 
+            onClick={onBack}
+            className="p-3 hover:bg-[#2C394B] rounded-2xl transition-colors text-slate-400"
+          >
+            <ChevronLeft size={24} />
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+          <button 
+            onClick={() => setActiveSection('plan-padrino')}
+            className="group relative bg-[#082032] border-2 border-[#334756] rounded-[40px] p-8 text-left hover:border-[#FF4C29] hover:shadow-2xl hover:shadow-[#FF4C29]/10 transition-all duration-500 overflow-hidden"
+          >
+            <div className="absolute top-0 right-0 w-32 h-32 bg-[#FF4C29]/5 rounded-full -mr-16 -mt-16 group-hover:scale-150 transition-transform duration-700" />
+            
+            <div className="w-16 h-16 bg-[#2C394B] rounded-2xl flex items-center justify-center mb-6 shadow-sm border border-[#334756] overflow-hidden group-hover:scale-110 transition-transform duration-500 p-2 relative">
+              <img 
+                src="https://lh3.googleusercontent.com/d/1RpVUh4KZ0s0tBpPynwFuwjiVqT0ddSDM" 
+                alt="People Logo" 
+                className="w-full h-full object-contain relative z-10"
+              />
+            </div>
+            
+            <h3 className="text-2xl font-black text-white uppercase tracking-tight mb-2">Plan Padrino</h3>
+            <p className="text-slate-400 text-sm font-medium leading-relaxed">
+              Programa de mentoría y acompañamiento para el desarrollo profesional de nuestros colaboradores.
+            </p>
+            
+            <div className="mt-8 flex items-center gap-2 text-[#FF4C29] font-black uppercase tracking-widest text-[10px]">
+              Ingresar ahora <ChevronRight size={14} />
+            </div>
+          </button>
+
+          <div className="bg-[#2C394B]/30 border-2 border-dashed border-[#334756] rounded-[40px] p-8 flex flex-col items-center justify-center text-center opacity-60">
+            <div className="w-16 h-16 bg-[#2C394B] rounded-3xl flex items-center justify-center text-slate-500 mb-6 border border-[#334756]">
+              <Activity size={32} />
+            </div>
+            <h3 className="text-xl font-black text-slate-500 uppercase tracking-tight mb-2">Próximamente</h3>
+            <p className="text-slate-600 text-xs font-bold uppercase tracking-widest">Nuevos módulos de gestión</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (!user) {
     return (
       <div className="flex flex-col items-center justify-center h-full max-w-md mx-auto p-6">
-        <div className="w-24 h-24 bg-blue-500/10 rounded-full flex items-center justify-center mb-8 border-4 border-blue-500/20">
-          <Users size={48} className="text-blue-500" />
+        <div className="w-24 h-24 bg-[#2C394B] rounded-[2rem] flex items-center justify-center mb-8 shadow-2xl border border-[#334756] overflow-hidden p-3 relative">
+          <img 
+            src="https://lh3.googleusercontent.com/d/1RpVUh4KZ0s0tBpPynwFuwjiVqT0ddSDM" 
+            alt="People Logo" 
+            className="w-full h-full object-contain relative z-10"
+          />
         </div>
-        <h2 className="text-3xl font-black text-slate-800 uppercase tracking-tight mb-2 text-center">Acceso People</h2>
-        <p className="text-slate-500 text-xs font-bold uppercase tracking-widest text-center mb-8">
+        <h2 className="text-3xl font-black text-white uppercase tracking-tight mb-2 text-center">Acceso People</h2>
+        <p className="text-slate-400 text-xs font-bold uppercase tracking-widest text-center mb-8">
           Ingrese su código único para continuar
         </p>
         
@@ -501,41 +568,45 @@ const PeopleModule: React.FC<PeopleModuleProps> = ({ onBack }) => {
               placeholder="CÓDIGO DE ACCESO"
               value={loginCode}
               onChange={(e) => setLoginCode(e.target.value)}
-              className="w-full bg-white border-2 border-slate-200 rounded-2xl px-6 py-4 text-center text-xl font-black uppercase tracking-widest outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/20 transition-all"
+              className="w-full bg-[#2C394B] border-2 border-[#334756] text-white rounded-2xl px-6 py-4 text-center text-xl font-black uppercase tracking-widest outline-none focus:border-[#FF4C29] focus:ring-4 focus:ring-[#FF4C29]/20 transition-all"
             />
           </div>
           {loginError && (
-            <p className="text-rose-500 text-xs font-bold text-center uppercase">{loginError}</p>
+            <p className="text-[#FF4C29] text-xs font-bold text-center uppercase">{loginError}</p>
           )}
           <button
             type="submit"
             disabled={isLoading}
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white rounded-2xl px-6 py-4 font-black uppercase tracking-widest text-sm transition-all flex items-center justify-center gap-3 shadow-lg shadow-blue-500/30 disabled:opacity-50"
+            className="w-full bg-[#FF4C29] hover:bg-[#FF4C29]/80 text-white rounded-2xl px-6 py-4 font-black uppercase tracking-widest text-sm transition-all flex items-center justify-center gap-3 shadow-lg shadow-[#FF4C29]/30 disabled:opacity-50"
           >
             {isLoading ? 'Verificando...' : <><LogIn size={20} /> Ingresar</>}
           </button>
         </form>
         
         <button 
-          onClick={onBack}
-          className="mt-8 text-slate-400 hover:text-slate-600 text-xs font-bold uppercase tracking-widest flex items-center gap-2 transition-colors"
+          onClick={() => setActiveSection('menu')}
+          className="mt-8 text-slate-500 hover:text-white text-xs font-bold uppercase tracking-widest flex items-center gap-2 transition-colors"
         >
-          <ChevronLeft size={16} /> Volver al menú principal
+          <ChevronLeft size={16} /> Volver a People
         </button>
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between mb-8 bg-white p-6 rounded-3xl border shadow-sm shrink-0">
+    <div className="flex flex-col h-full bg-[#082032]">
+      <div className="flex items-center justify-between mb-8 bg-[#2C394B] p-6 rounded-3xl border border-[#334756] shadow-xl shrink-0">
         <div className="flex items-center gap-4">
-          <div className="w-12 h-12 bg-blue-100 rounded-2xl flex items-center justify-center text-blue-600">
-            <Users size={24} />
+          <div className="w-12 h-12 bg-[#334756] rounded-xl flex items-center justify-center border border-[#334756] overflow-hidden shadow-sm p-1 relative">
+            <img 
+              src="https://lh3.googleusercontent.com/d/1RpVUh4KZ0s0tBpPynwFuwjiVqT0ddSDM" 
+              alt="People Logo" 
+              className="w-full h-full object-contain relative z-10"
+            />
           </div>
           <div>
-            <h2 className="text-2xl font-black text-slate-800 uppercase tracking-tight">Plan Padrino</h2>
-            <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest">
+            <h2 className="text-2xl font-black text-white uppercase tracking-tight">Plan Padrino</h2>
+            <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest">
               {user.name} • {user.role}
             </p>
           </div>
@@ -543,27 +614,27 @@ const PeopleModule: React.FC<PeopleModuleProps> = ({ onBack }) => {
         <div className="flex items-center gap-4">
           <button 
             onClick={() => setUser(null)}
-            className="px-4 py-2 bg-slate-100 text-slate-600 rounded-xl font-black uppercase tracking-widest text-[10px] hover:bg-slate-200 transition-all"
+            className="px-4 py-2 bg-[#334756] text-white rounded-xl font-black uppercase tracking-widest text-[10px] hover:bg-[#FF4C29] transition-all"
           >
             Cerrar Sesión
           </button>
         </div>
       </div>
       
-      <div className="flex-grow bg-white rounded-3xl border shadow-sm overflow-hidden flex flex-col">
+      <div className="flex-grow bg-[#2C394B] rounded-3xl border border-[#334756] shadow-xl overflow-hidden flex flex-col">
         {!activePlan ? (
           <div className="p-8 h-full overflow-y-auto custom-scrollbar">
             <div className="flex items-center justify-between mb-8">
               <div>
-                <h3 className="text-xl font-black text-slate-800 uppercase tracking-tight">
+                <h3 className="text-xl font-black text-white uppercase tracking-tight">
                   {user.role === 'admin' ? 'Panel de Control Master' : 'Mis Planes de Mentoría'}
                 </h3>
-                <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest">
+                <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest">
                   {user.role === 'admin' ? 'Seguimiento global de todos los procesos' : (user.role === 'padrino' ? 'Colaboradores a tu cargo' : 'Tu proceso de formación')}
                 </p>
               </div>
               {user.role === 'admin' && (
-                <button className="px-4 py-2 bg-blue-600 text-white rounded-xl font-black uppercase tracking-widest text-[10px] hover:bg-blue-700 transition-all flex items-center gap-2">
+                <button className="px-4 py-2 bg-[#FF4C29] text-white rounded-xl font-black uppercase tracking-widest text-[10px] hover:bg-[#FF4C29]/80 transition-all flex items-center gap-2">
                   <Plus size={16} /> Nuevo Plan
                 </button>
               )}
@@ -571,8 +642,8 @@ const PeopleModule: React.FC<PeopleModuleProps> = ({ onBack }) => {
 
             {plans.length === 0 ? (
               <div className="text-center py-20">
-                <Users size={48} className="text-slate-200 mx-auto mb-4" />
-                <p className="text-slate-400 font-bold uppercase tracking-widest text-xs">No tienes planes activos en este momento</p>
+                <Users size={48} className="text-[#334756] mx-auto mb-4" />
+                <p className="text-slate-500 font-bold uppercase tracking-widest text-xs">No tienes planes activos en este momento</p>
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -580,33 +651,33 @@ const PeopleModule: React.FC<PeopleModuleProps> = ({ onBack }) => {
                   <div 
                     key={`${plan.id}-${index}`}
                     onClick={() => setActivePlan(plan)}
-                    className="border-2 border-slate-100 rounded-3xl p-6 hover:border-blue-500 hover:shadow-lg transition-all cursor-pointer group"
+                    className="border-2 border-[#334756] bg-[#082032]/50 rounded-3xl p-6 hover:border-[#FF4C29] hover:shadow-lg transition-all cursor-pointer group"
                   >
                     <div className="flex items-center justify-between mb-4">
                       <div className="flex items-center gap-2">
                         <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest ${
-                          plan.status === 'Activo' ? 'bg-emerald-100 text-emerald-600' :
-                          plan.status === 'En proceso' ? 'bg-amber-100 text-amber-600' :
-                          'bg-slate-100 text-slate-600'
+                          plan.status === 'Activo' ? 'bg-emerald-500/10 text-emerald-400' :
+                          plan.status === 'En proceso' ? 'bg-amber-500/10 text-amber-400' :
+                          'bg-[#334756] text-slate-400'
                         }`}>
                           {plan.status}
                         </span>
                         {unreadCounts[plan.id] > 0 && (
-                          <span className="bg-rose-500 text-white text-[9px] font-black px-2 py-0.5 rounded-full animate-pulse flex items-center gap-1">
+                          <span className="bg-[#FF4C29] text-white text-[9px] font-black px-2 py-0.5 rounded-full animate-pulse flex items-center gap-1">
                             <Bell size={8} fill="currentColor" /> {unreadCounts[plan.id]}
                           </span>
                         )}
                       </div>
-                      <span className="text-slate-400 text-[10px] font-bold flex items-center gap-1">
+                      <span className="text-slate-500 text-[10px] font-bold flex items-center gap-1">
                         <Calendar size={12} /> {plan.endDate}
                       </span>
                     </div>
                     
                     <div className="mb-6">
-                      <h4 className="text-lg font-black text-slate-800 uppercase leading-tight group-hover:text-blue-600 transition-colors">
+                      <h4 className="text-lg font-black text-white uppercase leading-tight group-hover:text-[#FF4C29] transition-colors">
                         {user.role === 'admin' ? plan.apadrinadoName : (plan.otherUser?.name || 'Usuario Desconocido')}
                       </h4>
-                      <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest">
+                      <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest">
                         {user.role === 'admin' 
                           ? `Padrino: ${plan.padrinoName}` 
                           : `${user.role === 'padrino' ? 'Apadrinado' : 'Padrino'} • ${plan.otherUser?.area || 'Sin área'}`
@@ -617,11 +688,11 @@ const PeopleModule: React.FC<PeopleModuleProps> = ({ onBack }) => {
                     <div className="space-y-2">
                       <div className="flex justify-between text-[10px] font-black uppercase tracking-widest">
                         <span className="text-slate-500">Avance</span>
-                        <span className="text-blue-600">{plan.progress}%</span>
+                        <span className="text-[#FF4C29]">{plan.progress}%</span>
                       </div>
-                      <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                      <div className="w-full bg-[#334756] h-2 rounded-full overflow-hidden">
                         <div 
-                          className="h-full bg-blue-500 transition-all duration-1000"
+                          className="h-full bg-[#FF4C29] transition-all duration-1000"
                           style={{ width: `${plan.progress}%` }}
                         />
                       </div>
@@ -632,29 +703,29 @@ const PeopleModule: React.FC<PeopleModuleProps> = ({ onBack }) => {
             )}
           </div>
         ) : (
-          <div className="flex flex-col h-full">
+          <div className="flex flex-col h-full bg-[#082032]">
             {/* Plan Header */}
-            <div className="p-6 border-b border-slate-100 flex items-center justify-between shrink-0 bg-slate-50/50">
+            <div className="p-6 border-b border-[#334756] flex items-center justify-between shrink-0 bg-[#2C394B]">
               <div className="flex items-center gap-4">
                 <button 
                   onClick={() => setActivePlan(null)}
-                  className="p-2 hover:bg-slate-200 rounded-xl transition-colors text-slate-400"
+                  className="p-2 hover:bg-[#334756] rounded-xl transition-colors text-slate-400"
                 >
                   <ChevronLeft size={20} />
                 </button>
                 <div>
-                  <h3 className="text-lg font-black text-slate-800 uppercase tracking-tight">
+                  <h3 className="text-lg font-black text-white uppercase tracking-tight">
                     {user.role === 'admin' ? `${activePlan.apadrinadoName} (Apadrinado)` : (activePlan.otherUser?.name || 'Usuario Desconocido')}
                   </h3>
-                  <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest">
+                  <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest">
                     {user.role === 'admin' ? `Padrino: ${activePlan.padrinoName}` : 'Plan de Formación • ' + activePlan.status}
                   </p>
                 </div>
               </div>
               <div className="flex items-center gap-4">
                 <div className="text-right">
-                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Progreso</div>
-                  <div className="text-xl font-black text-blue-600">{activePlan.progress}%</div>
+                  <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Progreso</div>
+                  <div className="text-xl font-black text-[#FF4C29]">{activePlan.progress}%</div>
                 </div>
               </div>
             </div>
@@ -662,63 +733,63 @@ const PeopleModule: React.FC<PeopleModuleProps> = ({ onBack }) => {
             {/* Plan Content */}
             <div className="flex-grow flex overflow-hidden">
               {/* Left Column: Tasks & Details */}
-              <div className="w-1/2 border-r border-slate-100 p-6 overflow-y-auto custom-scrollbar flex flex-col gap-8">
+              <div className="w-1/2 border-r border-[#334756] p-6 overflow-y-auto custom-scrollbar flex flex-col gap-8">
                 <div>
-                  <h4 className="text-sm font-black text-slate-800 uppercase tracking-widest mb-4 flex items-center gap-2">
-                    <Calendar size={16} className="text-blue-500" /> Detalles del Plan
+                  <h4 className="text-sm font-black text-white uppercase tracking-widest mb-4 flex items-center gap-2">
+                    <Calendar size={16} className="text-[#FF4C29]" /> Detalles del Plan
                   </h4>
-                  <div className="bg-slate-50 rounded-2xl p-4 space-y-4 border border-slate-100">
+                  <div className="bg-[#2C394B] rounded-2xl p-4 space-y-4 border border-[#334756]">
                     <div className="flex justify-between items-center">
-                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Fecha Inicio</span>
+                      <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Fecha Inicio</span>
                       {activePlan.startDate ? (
-                        <span className="text-xs font-bold text-slate-700">{activePlan.startDate}</span>
+                        <span className="text-xs font-bold text-slate-300">{activePlan.startDate}</span>
                       ) : (user.role === 'padrino' || user.role === 'admin') ? (
                         <input 
                           type="date" 
                           onChange={(e) => handleUpdateStartDate(e.target.value)}
-                          className="text-xs bg-white border border-slate-200 rounded-lg px-2 py-1 outline-none focus:border-blue-500"
+                          className="text-xs bg-[#334756] border border-[#334756] text-white rounded-lg px-2 py-1 outline-none focus:border-[#FF4C29]"
                         />
                       ) : (
-                        <span className="text-xs font-bold text-slate-400 italic">Pendiente</span>
+                        <span className="text-xs font-bold text-slate-500 italic">Pendiente</span>
                       )}
                     </div>
                     <div className="flex justify-between items-center">
-                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Fecha Fin</span>
-                      <span className="text-xs font-bold text-slate-700">{activePlan.endDate || 'N/A'}</span>
+                      <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Fecha Fin</span>
+                      <span className="text-xs font-bold text-slate-300">{activePlan.endDate || 'N/A'}</span>
                     </div>
                   </div>
                 </div>
 
                 <div>
-                  <h4 className="text-sm font-black text-slate-800 uppercase tracking-widest mb-4 flex items-center gap-2">
-                    <CheckCircle2 size={16} className="text-blue-500" /> Tareas y Habilidades
+                  <h4 className="text-sm font-black text-white uppercase tracking-widest mb-4 flex items-center gap-2">
+                    <CheckCircle2 size={16} className="text-[#FF4C29]" /> Tareas y Habilidades
                   </h4>
                   <div className="space-y-3">
                     {tasks.length === 0 ? (
-                      <p className="text-xs text-slate-400 italic">No hay tareas asignadas aún.</p>
+                      <p className="text-xs text-slate-500 italic">No hay tareas asignadas aún.</p>
                     ) : (
                       tasks.map(task => (
                         <div 
                           key={task.id} 
                           className={`flex items-start gap-3 p-4 rounded-2xl border ${
-                            task.isCompleted ? 'bg-emerald-50 border-emerald-100' : 'bg-slate-50 border-slate-100'
+                            task.isCompleted ? 'bg-emerald-500/5 border-emerald-500/20' : 'bg-[#2C394B] border-[#334756]'
                           }`}
                         >
                           <button 
                             onClick={() => handleToggleTask(task)}
                             disabled={user.role !== 'padrino' && user.role !== 'admin'}
                             className={`mt-0.5 transition-colors ${
-                              task.isCompleted ? 'text-emerald-500' : 'text-slate-300 hover:text-emerald-500'
+                              task.isCompleted ? 'text-emerald-500' : 'text-slate-500 hover:text-[#FF4C29]'
                             } ${(user.role !== 'padrino' && user.role !== 'admin') ? 'cursor-default' : 'cursor-pointer'}`}
                           >
                             {task.isCompleted ? <CheckCircle2 size={18} /> : <Circle size={18} />}
                           </button>
                           <div>
-                            <p className={`text-xs font-bold ${task.isCompleted ? 'text-slate-700 line-through opacity-70' : 'text-slate-700'}`}>
+                            <p className={`text-xs font-bold ${task.isCompleted ? 'text-slate-400 line-through opacity-70' : 'text-slate-200'}`}>
                               {task.description}
                             </p>
                             <p className={`text-[9px] font-black uppercase tracking-widest mt-1 ${
-                              task.isCompleted ? 'text-emerald-600' : 'text-slate-400'
+                              task.isCompleted ? 'text-emerald-400' : 'text-slate-500'
                             }`}>
                               {task.isCompleted ? 'Completado' : 'Pendiente'}
                             </p>
@@ -735,20 +806,20 @@ const PeopleModule: React.FC<PeopleModuleProps> = ({ onBack }) => {
                             value={newTaskDesc}
                             onChange={(e) => setNewTaskDesc(e.target.value)}
                             placeholder="Descripción de la tarea..."
-                            className="flex-grow bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none focus:border-blue-500"
+                            className="flex-grow bg-[#2C394B] border border-[#334756] text-white rounded-xl px-3 py-2 text-xs outline-none focus:border-[#FF4C29]"
                             autoFocus
                           />
-                          <button type="submit" className="bg-blue-600 text-white p-2 rounded-xl hover:bg-blue-700">
+                          <button type="submit" className="bg-[#FF4C29] text-white p-2 rounded-xl hover:bg-[#FF4C29]/80">
                             <Plus size={16} />
                           </button>
-                          <button type="button" onClick={() => setIsAddingTask(false)} className="bg-slate-200 text-slate-600 p-2 rounded-xl hover:bg-slate-300">
+                          <button type="button" onClick={() => setIsAddingTask(false)} className="bg-[#334756] text-white p-2 rounded-xl hover:bg-[#334756]/80">
                             Cancelar
                           </button>
                         </form>
                       ) : (
                         <button 
                           onClick={() => setIsAddingTask(true)}
-                          className="mt-4 w-full py-3 border-2 border-dashed border-slate-200 rounded-2xl text-slate-400 hover:text-blue-600 hover:border-blue-200 transition-colors flex items-center justify-center gap-2 text-xs font-bold uppercase tracking-widest"
+                          className="mt-4 w-full py-3 border-2 border-dashed border-[#334756] rounded-2xl text-slate-500 hover:text-[#FF4C29] hover:border-[#FF4C29]/30 transition-colors flex items-center justify-center gap-2 text-xs font-bold uppercase tracking-widest"
                         >
                           <Plus size={16} /> Agregar Tarea
                         </button>
@@ -759,16 +830,16 @@ const PeopleModule: React.FC<PeopleModuleProps> = ({ onBack }) => {
               </div>
 
               {/* Right Column: Chat */}
-              <div className="w-1/2 flex flex-col bg-slate-50/30">
-                <div className="p-4 border-b border-slate-100 bg-white shrink-0 flex items-center justify-between">
-                  <h4 className="text-sm font-black text-slate-800 uppercase tracking-widest flex items-center gap-2">
-                    <MessageSquare size={16} className="text-blue-500" /> Chat del Plan
+              <div className="w-1/2 flex flex-col bg-[#082032]/50">
+                <div className="p-4 border-b border-[#334756] bg-[#2C394B] shrink-0 flex items-center justify-between">
+                  <h4 className="text-sm font-black text-white uppercase tracking-widest flex items-center gap-2">
+                    <MessageSquare size={16} className="text-[#FF4C29]" /> Chat del Plan
                   </h4>
                   {user.role === 'admin' && (
                     <div className="flex items-center gap-2">
                       {showConfirmClear ? (
-                        <div className="flex items-center gap-2 bg-rose-50 p-1 rounded-lg border border-rose-100">
-                          <span className="text-[8px] font-bold text-rose-600 uppercase">¿Borrar todo?</span>
+                        <div className="flex items-center gap-2 bg-rose-500/10 p-1 rounded-lg border border-rose-500/20">
+                          <span className="text-[8px] font-bold text-rose-400 uppercase">¿Borrar todo?</span>
                           <button 
                             onClick={handleClearChat}
                             className="text-[9px] font-black bg-rose-500 text-white px-2 py-1 rounded-md hover:bg-rose-600 transition-colors"
@@ -777,7 +848,7 @@ const PeopleModule: React.FC<PeopleModuleProps> = ({ onBack }) => {
                           </button>
                           <button 
                             onClick={() => setShowConfirmClear(false)}
-                            className="text-[9px] font-black bg-slate-200 text-slate-600 px-2 py-1 rounded-md hover:bg-slate-300 transition-colors"
+                            className="text-[9px] font-black bg-[#334756] text-white px-2 py-1 rounded-md hover:bg-[#334756]/80 transition-colors"
                           >
                             No
                           </button>
@@ -785,7 +856,7 @@ const PeopleModule: React.FC<PeopleModuleProps> = ({ onBack }) => {
                       ) : (
                         <button 
                           onClick={() => setShowConfirmClear(true)}
-                          className="text-[9px] font-black text-rose-500 uppercase tracking-widest hover:bg-rose-50 px-2 py-1 rounded-lg transition-colors border border-transparent hover:border-rose-100"
+                          className="text-[9px] font-black text-rose-400 uppercase tracking-widest hover:bg-rose-500/10 px-2 py-1 rounded-lg transition-colors border border-transparent hover:border-rose-500/20"
                         >
                           Limpiar Chat
                         </button>
@@ -797,8 +868,8 @@ const PeopleModule: React.FC<PeopleModuleProps> = ({ onBack }) => {
                 <div className="flex-grow p-6 overflow-y-auto custom-scrollbar flex flex-col gap-4">
                   {messages.length === 0 ? (
                     <div className="text-center py-10">
-                      <MessageSquare size={32} className="text-slate-200 mx-auto mb-2" />
-                      <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">No hay mensajes aún</p>
+                      <MessageSquare size={32} className="text-[#334756] mx-auto mb-2" />
+                      <p className="text-xs text-slate-500 font-bold uppercase tracking-widest">No hay mensajes aún</p>
                     </div>
                   ) : (
                     messages.map(msg => {
@@ -808,21 +879,34 @@ const PeopleModule: React.FC<PeopleModuleProps> = ({ onBack }) => {
                         <div key={msg.id} className={`flex flex-col gap-1 ${isMine ? 'items-end' : 'items-start'}`}>
                           <div className={`px-4 py-3 max-w-[80%] shadow-sm ${
                             isMine 
-                              ? 'bg-blue-600 text-white rounded-2xl rounded-tr-none' 
-                              : 'bg-white border border-slate-200 rounded-2xl rounded-tl-none'
+                              ? 'bg-[#FF4C29] text-white rounded-2xl rounded-tr-none' 
+                              : 'bg-[#2C394B] border border-[#334756] text-white rounded-2xl rounded-tl-none'
                           }`}>
-                            <p className={`text-xs ${isMine ? 'text-white' : 'text-slate-700'}`}>{msg.text}</p>
+                            {msg.text && <p className={`text-xs ${isMine ? 'text-white' : 'text-slate-200'}`}>{msg.text}</p>}
+                            {msg.attachments && msg.attachments.length > 0 && (
+                              <div className="mt-2 space-y-2">
+                                {msg.attachments.map((url: string, i: number) => (
+                                  <img 
+                                    key={i} 
+                                    src={url} 
+                                    alt="Attachment" 
+                                    className="max-w-full rounded-lg border border-white/10"
+                                    referrerPolicy="no-referrer"
+                                  />
+                                ))}
+                              </div>
+                            )}
                           </div>
-                          <span className="text-[9px] font-bold text-slate-400 uppercase">{timeString}</span>
+                          <span className="text-[9px] font-bold text-slate-500 uppercase">{timeString}</span>
                         </div>
                       );
                     })
                   )}
                 </div>
 
-                <div className="p-4 bg-white border-t border-slate-100 shrink-0">
-                  <form onSubmit={handleSendMessage} className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-2xl p-2 focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/20 transition-all">
-                    <button type="button" className="p-2 text-slate-400 hover:text-blue-600 transition-colors">
+                <div className="p-4 bg-[#2C394B] border-t border-[#334756] shrink-0">
+                  <form onSubmit={handleSendMessage} className="flex items-center gap-2 bg-[#082032] border border-[#334756] rounded-2xl p-2 focus-within:border-[#FF4C29] focus-within:ring-2 focus-within:ring-[#FF4C29]/20 transition-all">
+                    <button type="button" className="p-2 text-slate-400 hover:text-[#FF4C29] transition-colors">
                       <Paperclip size={18} />
                     </button>
                     <input 
@@ -837,12 +921,12 @@ const PeopleModule: React.FC<PeopleModuleProps> = ({ onBack }) => {
                         }
                       }}
                       placeholder="Escribe un mensaje..." 
-                      className="flex-grow bg-transparent text-xs outline-none px-2"
+                      className="flex-grow bg-transparent text-white text-xs outline-none px-2"
                     />
                     <button 
                       type="submit" 
                       disabled={!newMessage.trim()}
-                      className="p-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-50"
+                      className="p-2 bg-[#FF4C29] text-white rounded-xl hover:bg-[#FF4C29]/80 transition-colors shadow-sm disabled:opacity-50"
                     >
                       <Send size={16} />
                     </button>
