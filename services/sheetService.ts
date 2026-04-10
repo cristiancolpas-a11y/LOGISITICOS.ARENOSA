@@ -966,9 +966,9 @@ export const fetchCashlessFromSheet = async (): Promise<CashlessRecord[]> => {
                 direccion: cleanSheetValue(row[3]), // D
                 municipio: cleanSheetValue(row[4]), // E
                 freRegularDias: cleanSheetValue(row[5]), // F
-                visitas: cleanSheetValue(row[6]), // G
+                visitas: cleanSheetValue(row[8]), // I (Status 1/0)
                 nivelRiesgo: cleanSheetValue(row[7]), // H
-                validador: cleanSheetValue(row[8]), // I
+                validador: cleanSheetValue(row[6]), // G (Validador Name)
                 fechaEjecucion: parseFlexibleDate(row[9]), // J
                 fechaProgramacion: parseFlexibleDate(row[10]), // K
                 calificacion: cleanSheetValue(row[11]), // L

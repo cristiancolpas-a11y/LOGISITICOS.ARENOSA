@@ -69,6 +69,14 @@ const VisitasPOCSModule: React.FC<VisitasPOCSModuleProps> = ({ onBack, searchTer
   const riskLevels = ['TODOS', ...Array.from(new Set(records.map(r => r.nivelRiesgo).filter(r => r !== '')))];
   const monthNames = ['ENE', 'FEB', 'MAR', 'ABR', 'MAY', 'JUN', 'JUL', 'AGO', 'SEP', 'OCT', 'NOV', 'DIC'];
 
+  const isExecuted = (record: CashlessRecord) => {
+    return record.visitas === '1';
+  };
+
+  const isPending = (record: CashlessRecord) => {
+    return record.visitas === '0';
+  };
+
   const getFilteredData = (excludeFilter?: string) => {
     return records.filter(record => {
       if (excludeFilter !== 'search') {
@@ -103,8 +111,9 @@ const VisitasPOCSModule: React.FC<VisitasPOCSModuleProps> = ({ onBack, searchTer
       }
 
       if (excludeFilter !== 'execution') {
-        if (executionFilter === 'EXECUTED' && record.fechaEjecucion === '') return false;
-        if (executionFilter === 'PENDING' && record.fechaEjecucion !== '') return false;
+        const executed = isExecuted(record);
+        if (executionFilter === 'EXECUTED' && !executed) return false;
+        if (executionFilter === 'PENDING' && executed) return false;
       }
 
       if (excludeFilter !== 'rating') {
@@ -120,11 +129,11 @@ const VisitasPOCSModule: React.FC<VisitasPOCSModuleProps> = ({ onBack, searchTer
 
   const stats = {
     total: baseFilteredRecords.length,
-    executed: baseFilteredRecords.filter(r => r.fechaEjecucion !== '').length,
-    pending: baseFilteredRecords.filter(r => r.fechaEjecucion === '').length,
+    executed: baseFilteredRecords.filter(r => isExecuted(r)).length,
+    pending: baseFilteredRecords.filter(r => isPending(r)).length,
     highRisk: baseFilteredRecords.filter(r => r.nivelRiesgo.toUpperCase().includes('ALTO')).length,
     compliance: baseFilteredRecords.length > 0 
-      ? (baseFilteredRecords.filter(r => r.fechaEjecucion !== '').length / baseFilteredRecords.length) * 100 
+      ? (baseFilteredRecords.filter(r => isExecuted(r)).length / baseFilteredRecords.length) * 100 
       : 0,
   };
 
@@ -566,9 +575,9 @@ const VisitasPOCSModule: React.FC<VisitasPOCSModuleProps> = ({ onBack, searchTer
                     </td>
                     <td className="px-8 py-6">
                       <div className="flex items-center gap-2 text-[11px] font-bold text-slate-600">
-                        <CheckCircle2 size={14} className={record.fechaEjecucion ? 'text-emerald-500' : 'text-slate-300'} />
-                        <span className={record.fechaEjecucion ? 'text-slate-700' : 'text-slate-400 italic'}>
-                          {record.fechaEjecucion || 'PENDIENTE'}
+                        <CheckCircle2 size={14} className={isExecuted(record) ? 'text-emerald-500' : isPending(record) ? 'text-amber-500' : 'text-slate-300'} />
+                        <span className={isExecuted(record) ? 'text-slate-700' : isPending(record) ? 'text-amber-600' : 'text-slate-400 italic'}>
+                          {isExecuted(record) ? 'EJECUTADO' : isPending(record) ? 'PENDIENTE' : 'SIN ESTADO'}
                         </span>
                       </div>
                     </td>
