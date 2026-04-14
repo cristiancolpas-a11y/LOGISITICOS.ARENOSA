@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Users, ChevronLeft, LogIn, Search, Plus, MessageSquare, 
   CheckCircle2, Clock, Calendar, Send, Paperclip, Activity,
-  ChevronRight, Circle, Bell
+  ChevronRight, Circle, Bell, Camera, Image as ImageIcon, Upload,
+  AlertCircle, FileText, Trash2, ChevronDown, Layout
 } from 'lucide-react';
 import { auth, db } from '../firebase';
 import { signInAnonymously } from 'firebase/auth';
@@ -18,7 +19,40 @@ interface PeopleModuleProps {
   onBack: () => void;
 }
 
+enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: any;
+}
+
 const PeopleModule: React.FC<PeopleModuleProps> = ({ onBack }) => {
+  const handleFirestoreError = (error: any, operationType: OperationType, path: string | null) => {
+    const errInfo: FirestoreErrorInfo = {
+      error: error instanceof Error ? error.message : String(error),
+      authInfo: {
+        userId: auth.currentUser?.uid,
+        email: auth.currentUser?.email,
+      },
+      operationType,
+      path
+    };
+    console.error('Firestore Error: ', JSON.stringify(errInfo));
+    // If it's an index error, it usually contains a link to create it
+    if (errInfo.error.includes('index')) {
+      alert("Falta un índice en la base de datos. Por favor, revisa la consola para el enlace de creación.");
+    }
+  };
+
   const [activeSection, setActiveSection] = useState<'menu' | 'plan-padrino'>('menu');
   const [user, setUser] = useState<any>(null);
   const [loginCode, setLoginCode] = useState('');
@@ -27,15 +61,43 @@ const PeopleModule: React.FC<PeopleModuleProps> = ({ onBack }) => {
   
   const [plans, setPlans] = useState<any[]>([]);
   const [activePlan, setActivePlan] = useState<any>(null);
+  const [isChatOpen, setIsChatOpen] = useState(false);
+  const [showDetails, setShowDetails] = useState(true);
   
   const [tasks, setTasks] = useState<any[]>([]);
+  const [isLoadingTasks, setIsLoadingTasks] = useState(false);
+  const [isGeneratingTasks, setIsGeneratingTasks] = useState(false);
+  const [isFuncionalExpanded, setIsFuncionalExpanded] = useState(false);
   const [messages, setMessages] = useState<any[]>([]);
+  const generatedPlansRef = useRef<Set<string>>(new Set());
   const [newMessage, setNewMessage] = useState('');
   const [newTaskDesc, setNewTaskDesc] = useState('');
+  const [newTaskPilar, setNewTaskPilar] = useState('GENERAL');
   const [isAddingTask, setIsAddingTask] = useState(false);
   const [showConfirmClear, setShowConfirmClear] = useState(false);
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
   const [lastNotificationTime, setLastNotificationTime] = useState(Date.now());
+
+  const FUNCIONAL_TASKS = [
+    { pilar: 'SAFETY', description: '1. Mapa de riesgos y matriz de EPPs', matriz: 'CONDUCTOR DE REPARTO', requiresEvidence: true },
+    { pilar: 'SAFETY', description: '2. Plan de tráfico del Centro de distribución y segregación HM', matriz: 'CONDUCTOR DE REPARTO', requiresEvidence: true },
+    { pilar: 'SAFETY', description: '3. Rutas críticas del Centro de distribución', matriz: 'CONDUCTOR DE REPARTO', requiresEvidence: true },
+    { pilar: 'SAFETY', description: '4. Programa de manejo a la defensiva', matriz: 'CONDUCTOR DE REPARTO', requiresEvidence: true },
+    { pilar: 'SAFETY', description: '5. ACIS, Incidentes y accidentes', matriz: 'CONDUCTOR DE REPARTO', requiresEvidence: true },
+    { pilar: 'SAFETY', description: '6. Proceso de carga y descarga', matriz: 'CONDUCTOR DE REPARTO', requiresEvidence: true },
+    { pilar: 'SAFETY', description: '7. Manejo de materiales', matriz: 'CONDUCTOR DE REPARTO', requiresEvidence: true },
+    { pilar: 'SAFETY', description: '8. Reduccion de situaciones violentas', matriz: 'CONDUCTOR DE REPARTO', requiresEvidence: true },
+    { pilar: 'SAFETY', description: '9. Suministro de combustible para los vehiculos', matriz: 'CONDUCTOR DE REPARTO', requiresEvidence: true },
+    { pilar: 'SAFETY', description: '10. Requisitos legales de tiempo de descanso', matriz: 'CONDUCTOR DE REPARTO', requiresEvidence: true },
+    { pilar: 'SAFETY', description: '11. Requisitos legales de seguridad de la carga', matriz: 'CONDUCTOR DE REPARTO', requiresEvidence: true },
+    { pilar: 'PEOPLE', description: '1. Estuctura de la empresa', matriz: 'CONDUCTOR DE REPARTO', requiresEvidence: true },
+    { pilar: 'PEOPLE', description: '2. Contrato y compensacion laboral', matriz: 'CONDUCTOR DE REPARTO', requiresEvidence: true },
+    { pilar: 'GESTION', description: '1. Rol y procesos del área de trabajo', matriz: 'CONDUCTOR DE REPARTO', requiresEvidence: true },
+    { pilar: 'FLOTA', description: '1. Inspección 360 de camión', matriz: 'CONDUCTOR DE REPARTO', requiresEvidence: true },
+    { pilar: 'REPARTO', description: '1. SOP en ruta', matriz: 'CONDUCTOR DE REPARTO', requiresEvidence: true },
+    { pilar: 'REPARTO', description: '2. Políticas de calidad', matriz: 'CONDUCTOR DE REPARTO', requiresEvidence: true },
+    { pilar: 'SAFETY', description: '12 ACIS, Incidentes y accidentes', matriz: 'AUXILIAR DE REPARTO', requiresEvidence: true },
+  ];
 
   const playNotificationSound = () => {
     try {
@@ -73,7 +135,8 @@ const PeopleModule: React.FC<PeopleModuleProps> = ({ onBack }) => {
           name: 'Administrador Master',
           identification: 'MASTER',
           role: 'admin',
-          area: 'DIRECCIÓN'
+          area: 'DIRECCIÓN',
+          isMaster: true
         });
         setIsLoading(false);
         return;
@@ -302,26 +365,29 @@ const PeopleModule: React.FC<PeopleModuleProps> = ({ onBack }) => {
     if (!activePlan || !user) return;
 
     const tasksRef = collection(db, 'mentorship_tasks');
-    const qTasks = query(tasksRef, where('planId', '==', activePlan.id), orderBy('createdAt', 'asc'));
+    // Simplified query to avoid composite index requirement for now
+    const qTasks = query(tasksRef, where('planId', '==', activePlan.id));
+    setIsLoadingTasks(true);
     const unsubTasks = onSnapshot(qTasks, (snapshot) => {
-      setTasks(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      const loadedTasks = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      // Sort in memory if needed
+      loadedTasks.sort((a: any, b: any) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+      setTasks(loadedTasks);
+      setIsLoadingTasks(false);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, 'mentorship_tasks');
+      setIsLoadingTasks(false);
     });
 
     const msgsRef = collection(db, 'mentorship_messages');
-    const qMsgs = query(msgsRef, where('planId', '==', activePlan.id), orderBy('createdAt', 'asc'));
+    // Simplified query to avoid composite index requirement for now
+    const qMsgs = query(msgsRef, where('planId', '==', activePlan.id));
     const unsubMsgs = onSnapshot(qMsgs, (snapshot) => {
       const newMsgs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      newMsgs.sort((a: any, b: any) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
       setMessages(newMsgs);
-      
-      // Mark as read
-      snapshot.docs.forEach(docSnap => {
-        const data = docSnap.data();
-        if (!data.readBy.includes(user.id)) {
-          updateDoc(doc(db, 'mentorship_messages', docSnap.id), {
-            readBy: arrayUnion(user.id)
-          });
-        }
-      });
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, 'mentorship_messages');
     });
 
     return () => {
@@ -330,6 +396,135 @@ const PeopleModule: React.FC<PeopleModuleProps> = ({ onBack }) => {
     };
   }, [activePlan]);
 
+  useEffect(() => {
+    if (isChatOpen && activePlan && messages.length > 0 && user) {
+      messages.forEach(msg => {
+        if (!msg.readBy.includes(user.id)) {
+          updateDoc(doc(db, 'mentorship_messages', msg.id), {
+            readBy: arrayUnion(user.id)
+          });
+        }
+      });
+    }
+  }, [isChatOpen, activePlan, messages, user?.id]);
+
+  // Automatically load tasks if plan has start date but no tasks
+  useEffect(() => {
+    if (activePlan && activePlan.startDate && !isLoadingTasks && !isGeneratingTasks && tasks.length === 0 && (user.role === 'padrino' || user.role === 'admin') && !user.isMaster) {
+      const start = new Date(activePlan.startDate);
+      const now = new Date();
+      const diffMs = now.getTime() - start.getTime();
+      const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+      
+      // Only load after 7 days of start date
+      if (diffDays >= 7) {
+        if (!generatedPlansRef.current.has(activePlan.id)) {
+          generatedPlansRef.current.add(activePlan.id);
+          console.log(`Auto-loading functional tasks for plan: ${activePlan.id} (Day ${diffDays})`);
+          handleLoadFuncionalTasks();
+        }
+      } else {
+        console.log(`Plan ${activePlan.id} is on day ${diffDays}. Waiting for day 7 to load functional tasks.`);
+      }
+    }
+  }, [activePlan?.id, activePlan?.startDate, tasks.length, isLoadingTasks, isGeneratingTasks]);
+
+  const renderTaskItem = (task: any) => (
+    <div 
+      key={task.id} 
+      className={`flex flex-col gap-2 p-3 rounded-xl border transition-all ${
+        task.isCompleted ? 'bg-emerald-500/5 border-emerald-500/20' : 'bg-[#2C394B] border-[#334756] hover:border-[#FF4C29]/30'
+      }`}
+    >
+      <div className="flex items-center gap-3">
+        <button 
+          onClick={() => handleToggleTask(task)}
+          disabled={(user.role !== 'padrino' && user.role !== 'admin') || user.isMaster}
+          className={`transition-colors ${
+            task.isCompleted ? 'text-emerald-500' : 'text-slate-500 hover:text-[#FF4C29]'
+          } ${((user.role !== 'padrino' && user.role !== 'admin') || user.isMaster) ? 'cursor-default' : 'cursor-pointer'}`}
+        >
+          {task.isCompleted ? <CheckCircle2 size={18} /> : <Circle size={18} />}
+        </button>
+        <div className="flex-grow flex items-center justify-between gap-4">
+          <p className={`text-[11px] font-bold ${task.isCompleted ? 'text-slate-400 line-through opacity-70' : 'text-slate-200'}`}>
+            {task.description}
+          </p>
+          <div className="flex items-center gap-2 shrink-0">
+            {task.requiresEvidence && !task.evidenceUrl && (
+              <span className="flex items-center gap-1 text-[7px] font-black text-[#FF4C29] bg-[#FF4C29]/10 px-1.5 py-0.5 rounded uppercase">
+                <AlertCircle size={7} /> Evidencia
+              </span>
+            )}
+            {task.matriz && (
+              <span className="text-[7px] font-black text-slate-500 bg-slate-500/10 px-1.5 py-0.5 rounded uppercase">
+                {task.matriz}
+              </span>
+            )}
+            <p className={`text-[8px] font-black uppercase tracking-widest ${
+              task.isCompleted ? 'text-emerald-400' : 'text-slate-500'
+            }`}>
+              {task.isCompleted ? 'OK' : 'PEND'}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {task.requiresEvidence && (
+        <div className="pt-2 border-t border-[#334756]/50">
+          {task.evidenceUrl ? (
+            <div className="flex items-center justify-between bg-[#082032]/50 p-1.5 rounded-lg border border-[#334756]">
+              <div className="flex items-center gap-2 overflow-hidden">
+                {task.evidenceType?.startsWith('image/') ? (
+                  <ImageIcon size={12} className="text-[#FF4C29] shrink-0" />
+                ) : (
+                  <FileText size={12} className="text-[#FF4C29] shrink-0" />
+                )}
+                <span className="text-[9px] font-bold text-slate-400 truncate max-w-[150px]">{task.evidenceName}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button 
+                  onClick={() => window.open(task.evidenceUrl, '_blank')}
+                  className="text-[8px] font-black text-[#FF4C29] uppercase hover:underline"
+                >
+                  Ver
+                </button>
+                {((user.role === 'padrino' || user.role === 'admin') && !user.isMaster && !task.isCompleted) && (
+                  <label className="cursor-pointer">
+                    <Upload size={12} className="text-slate-500 hover:text-[#FF4C29]" />
+                    <input 
+                      type="file" 
+                      className="hidden" 
+                      onChange={(e) => handleUploadEvidence(task.id, e)}
+                      accept="image/*,.pdf,.doc,.docx"
+                    />
+                  </label>
+                )}
+              </div>
+            </div>
+          ) : (
+            ((user.role === 'padrino' || user.role === 'admin') && !user.isMaster) ? (
+              <label className="flex items-center justify-center gap-2 py-2 border border-dashed border-[#334756] rounded-xl cursor-pointer hover:border-[#FF4C29]/50 hover:bg-[#FF4C29]/5 transition-all group">
+                <Upload size={14} className="text-slate-500 group-hover:text-[#FF4C29]" />
+                <span className="text-[9px] font-black text-slate-500 group-hover:text-[#FF4C29] uppercase tracking-widest">Subir Evidencia</span>
+                <input 
+                  type="file" 
+                  className="hidden" 
+                  onChange={(e) => handleUploadEvidence(task.id, e)}
+                  accept="image/*,.pdf,.doc,.docx"
+                />
+              </label>
+            ) : (
+              <div className="flex items-center gap-2 text-slate-600 italic text-[9px]">
+                <Clock size={10} /> Esperando evidencia...
+              </div>
+            )
+          )}
+        </div>
+      )}
+    </div>
+  );
+
   const handleSendMessage = async (e?: React.FormEvent | React.KeyboardEvent) => {
     if (e) {
       e.preventDefault();
@@ -337,7 +532,7 @@ const PeopleModule: React.FC<PeopleModuleProps> = ({ onBack }) => {
     }
     
     const text = newMessage.trim();
-    if (!text || !activePlan) return;
+    if (!text || !activePlan || user.isMaster) return;
 
     // Clear state immediately and don't look back
     setNewMessage('');
@@ -371,7 +566,7 @@ const PeopleModule: React.FC<PeopleModuleProps> = ({ onBack }) => {
   };
 
   const handleClearChat = async () => {
-    if (user.role !== 'admin' || !activePlan) return;
+    if (user.role !== 'admin' || !activePlan || user.isMaster) return;
     
     console.log("Iniciando limpieza de chat para plan:", activePlan.id);
     try {
@@ -400,9 +595,66 @@ const PeopleModule: React.FC<PeopleModuleProps> = ({ onBack }) => {
     }
   };
 
-  const handleToggleTask = async (task: any) => {
-    if (user.role !== 'padrino' && user.role !== 'admin') return; // Only padrino or admin can validate tasks
+  const handleDeleteDuplicateTasks = async () => {
+    if (user.role !== 'admin' || !activePlan || user.isMaster) return;
     
+    try {
+      const tasksRef = collection(db, 'mentorship_tasks');
+      const q = query(tasksRef, where('planId', '==', activePlan.id));
+      const snapshot = await getDocs(q);
+      
+      if (snapshot.empty) return;
+
+      const seen = new Set();
+      const batch = writeBatch(db);
+      let deletedCount = 0;
+      let updatedCount = 0;
+
+      // Sort by createdAt to keep the oldest one
+      const sortedDocs = [...snapshot.docs].sort((a, b) => {
+        const timeA = new Date(a.data().createdAt || 0).getTime();
+        const timeB = new Date(b.data().createdAt || 0).getTime();
+        return timeA - timeB;
+      });
+
+      sortedDocs.forEach((doc) => {
+        const data = doc.data();
+        const key = `${data.description.trim()}-${data.pilar}-${data.matriz || ''}`;
+        
+        if (seen.has(key)) {
+          batch.delete(doc.ref);
+          deletedCount++;
+        } else {
+          seen.add(key);
+          // Also fix missing isFuncional flag if it matches functional tasks
+          const isFunc = FUNCIONAL_TASKS.some(ft => ft.description === data.description);
+          if (isFunc && !data.isFuncional) {
+            batch.update(doc.ref, { isFuncional: true });
+            updatedCount++;
+          }
+        }
+      });
+
+      if (deletedCount > 0 || updatedCount > 0) {
+        await batch.commit();
+        alert(`Se eliminaron ${deletedCount} tareas duplicadas y se actualizaron ${updatedCount} tareas.`);
+      } else {
+        alert("No se encontraron tareas duplicadas exactas.");
+      }
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, 'mentorship_tasks (delete duplicates)');
+      alert("Error al eliminar duplicados.");
+    }
+  };
+
+  const handleToggleTask = async (task: any) => {
+    if ((user.role !== 'padrino' && user.role !== 'admin') || user.isMaster) return; // Only padrino or admin can validate tasks
+    
+    if (task.requiresEvidence && !task.evidenceUrl && !task.isCompleted) {
+      alert("Esta tarea requiere evidencias (fotos/documentos) antes de ser marcada como completada.");
+      return;
+    }
+
     try {
       const isCompleted = !task.isCompleted;
       await updateDoc(doc(db, 'mentorship_tasks', task.id), {
@@ -426,19 +678,22 @@ const PeopleModule: React.FC<PeopleModuleProps> = ({ onBack }) => {
         progress: progress
       });
     } catch (error) {
-      console.error("Error toggling task:", error);
+      handleFirestoreError(error, OperationType.UPDATE, 'mentorship_tasks (toggle)');
     }
   };
 
   const handleAddTask = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newTaskDesc.trim() || !activePlan || (user.role !== 'padrino' && user.role !== 'admin')) return;
+    if (!newTaskDesc.trim() || !activePlan || (user.role !== 'padrino' && user.role !== 'admin') || user.isMaster) return;
 
     try {
       await addDoc(collection(db, 'mentorship_tasks'), {
         planId: activePlan.id,
         description: newTaskDesc.trim(),
+        pilar: newTaskPilar,
         isCompleted: false,
+        isFuncional: false,
+        requiresEvidence: newTaskDesc.toLowerCase().includes('evidencia') || newTaskDesc.toLowerCase().includes('funcional'),
         createdAt: new Date().toISOString()
       });
       
@@ -461,24 +716,106 @@ const PeopleModule: React.FC<PeopleModuleProps> = ({ onBack }) => {
         progress: progress
       });
     } catch (error) {
-      console.error("Error adding task:", error);
+      handleFirestoreError(error, OperationType.WRITE, 'mentorship_tasks (add)');
     }
   };
 
-  const handleUpdateStartDate = async (date: string) => {
-    if (!activePlan || (user.role !== 'padrino' && user.role !== 'admin')) return;
+  const handleLoadFuncionalTasks = async () => {
+    if (!activePlan || (user.role !== 'padrino' && user.role !== 'admin') || user.isMaster || isGeneratingTasks) return;
+    
+    setIsGeneratingTasks(true);
     try {
+      // Double check in DB to prevent race conditions
+      const tasksRef = collection(db, 'mentorship_tasks');
+      const q = query(tasksRef, where('planId', '==', activePlan.id));
+      const snapshot = await getDocs(q);
+      
+      if (!snapshot.empty) {
+        console.log("Tasks already exist for this plan, skipping auto-load.");
+        setIsGeneratingTasks(false);
+        return;
+      }
+
+      const batch = writeBatch(db);
+      
+      FUNCIONAL_TASKS.forEach(task => {
+        const newDocRef = doc(tasksRef);
+        batch.set(newDocRef, {
+          planId: activePlan.id,
+          description: task.description,
+          pilar: task.pilar,
+          matriz: task.matriz,
+          requiresEvidence: true,
+          isCompleted: false,
+          isFuncional: true,
+          createdAt: new Date().toISOString()
+        });
+      });
+      
+      await batch.commit();
+      
+      // Reset progress to 0 since we added many new tasks
       await updateDoc(doc(db, 'mentorship_plans', activePlan.id), {
-        startDate: date,
+        progress: 0,
         lastActivityAt: new Date().toISOString()
       });
       
       await submitMentorshipPlanUpdateToSheet({
         id: activePlan.id,
-        startDate: date
+        progress: 0
+      });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, 'mentorship_tasks (batch)');
+      alert("Error al cargar las tareas funcionales. Revisa la consola.");
+    } finally {
+      setIsGeneratingTasks(false);
+    }
+  };
+
+  const handleUploadEvidence = async (taskId: string, e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !activePlan) return;
+
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      const base64 = event.target?.result as string;
+      try {
+        await updateDoc(doc(db, 'mentorship_tasks', taskId), {
+          evidenceUrl: base64,
+          evidenceName: file.name,
+          evidenceType: file.type,
+          uploadedAt: new Date().toISOString()
+        });
+      } catch (error) {
+        handleFirestoreError(error, OperationType.UPDATE, 'mentorship_tasks (evidence)');
+        alert("Error al subir la evidencia. El archivo podría ser demasiado grande.");
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleUpdateStartDate = async (date: string) => {
+    if (!activePlan || (user.role !== 'padrino' && user.role !== 'admin')) return;
+    try {
+      // Calculate end date (7 days after start)
+      const startDateObj = new Date(date);
+      const endDateObj = new Date(startDateObj);
+      endDateObj.setDate(startDateObj.getDate() + 7);
+      const endDateStr = endDateObj.toISOString().split('T')[0];
+
+      await updateDoc(doc(db, 'mentorship_plans', activePlan.id), {
+        startDate: date,
+        endDate: endDateStr,
+        lastActivityAt: new Date().toISOString()
       });
       
-      setActivePlan({ ...activePlan, startDate: date });
+      await submitMentorshipPlanUpdateToSheet({
+        id: activePlan.id,
+        startDate: date,
+        endDate: endDateStr
+      });
+      
+      setActivePlan({ ...activePlan, startDate: date, endDate: endDateStr });
     } catch (error) {
       console.error("Error updating start date:", error);
     }
@@ -731,208 +1068,397 @@ const PeopleModule: React.FC<PeopleModuleProps> = ({ onBack }) => {
             </div>
 
             {/* Plan Content */}
-            <div className="flex-grow flex overflow-hidden">
-              {/* Left Column: Tasks & Details */}
-              <div className="w-1/2 border-r border-[#334756] p-6 overflow-y-auto custom-scrollbar flex flex-col gap-8">
-                <div>
-                  <h4 className="text-sm font-black text-white uppercase tracking-widest mb-4 flex items-center gap-2">
-                    <Calendar size={16} className="text-[#FF4C29]" /> Detalles del Plan
-                  </h4>
-                  <div className="bg-[#2C394B] rounded-2xl p-4 space-y-4 border border-[#334756]">
-                    <div className="flex justify-between items-center">
-                      <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Fecha Inicio</span>
-                      {activePlan.startDate ? (
-                        <span className="text-xs font-bold text-slate-300">{activePlan.startDate}</span>
-                      ) : (user.role === 'padrino' || user.role === 'admin') ? (
-                        <input 
-                          type="date" 
-                          onChange={(e) => handleUpdateStartDate(e.target.value)}
-                          className="text-xs bg-[#334756] border border-[#334756] text-white rounded-lg px-2 py-1 outline-none focus:border-[#FF4C29]"
-                        />
-                      ) : (
-                        <span className="text-xs font-bold text-slate-500 italic">Pendiente</span>
-                      )}
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Fecha Fin</span>
-                      <span className="text-xs font-bold text-slate-300">{activePlan.endDate || 'N/A'}</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div>
-                  <h4 className="text-sm font-black text-white uppercase tracking-widest mb-4 flex items-center gap-2">
-                    <CheckCircle2 size={16} className="text-[#FF4C29]" /> Tareas y Habilidades
-                  </h4>
-                  <div className="space-y-3">
-                    {tasks.length === 0 ? (
-                      <p className="text-xs text-slate-500 italic">No hay tareas asignadas aún.</p>
-                    ) : (
-                      tasks.map(task => (
-                        <div 
-                          key={task.id} 
-                          className={`flex items-start gap-3 p-4 rounded-2xl border ${
-                            task.isCompleted ? 'bg-emerald-500/5 border-emerald-500/20' : 'bg-[#2C394B] border-[#334756]'
-                          }`}
-                        >
-                          <button 
-                            onClick={() => handleToggleTask(task)}
-                            disabled={user.role !== 'padrino' && user.role !== 'admin'}
-                            className={`mt-0.5 transition-colors ${
-                              task.isCompleted ? 'text-emerald-500' : 'text-slate-500 hover:text-[#FF4C29]'
-                            } ${(user.role !== 'padrino' && user.role !== 'admin') ? 'cursor-default' : 'cursor-pointer'}`}
-                          >
-                            {task.isCompleted ? <CheckCircle2 size={18} /> : <Circle size={18} />}
-                          </button>
-                          <div>
-                            <p className={`text-xs font-bold ${task.isCompleted ? 'text-slate-400 line-through opacity-70' : 'text-slate-200'}`}>
-                              {task.description}
-                            </p>
-                            <p className={`text-[9px] font-black uppercase tracking-widest mt-1 ${
-                              task.isCompleted ? 'text-emerald-400' : 'text-slate-500'
-                            }`}>
-                              {task.isCompleted ? 'Completado' : 'Pendiente'}
-                            </p>
-                          </div>
+            <div className="flex-grow flex flex-col overflow-hidden relative">
+              {/* Collapsible Details & Progress */}
+              <div className="shrink-0 bg-[#082032] border-b border-[#334756]">
+                <button 
+                  onClick={() => setShowDetails(!showDetails)}
+                  className="w-full px-6 py-3 flex items-center justify-between text-slate-500 hover:text-white transition-colors"
+                >
+                  <span className="text-[10px] font-black uppercase tracking-[0.2em]">
+                    {showDetails ? 'Ocultar Detalles del Plan' : 'Ver Detalles y Progreso'}
+                  </span>
+                  {showDetails ? <ChevronLeft className="rotate-90" size={16} /> : <ChevronLeft className="-rotate-90" size={16} />}
+                </button>
+                
+                {showDetails && (
+                  <div className="p-6 pt-0 grid grid-cols-1 md:grid-cols-2 gap-6 animate-in slide-in-from-top duration-300">
+                    <div>
+                      <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3 flex items-center gap-2">
+                        <Calendar size={14} className="text-[#FF4C29]" /> Cronograma
+                      </h4>
+                      <div className="bg-[#2C394B] rounded-2xl p-4 space-y-3 border border-[#334756]">
+                        <div className="flex justify-between items-center">
+                          <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Inicio</span>
+                          {activePlan.startDate ? (
+                            <span className="text-xs font-bold text-slate-300">{activePlan.startDate}</span>
+                          ) : (user.role === 'padrino' || user.role === 'admin') ? (
+                            <input 
+                              type="date" 
+                              onChange={(e) => handleUpdateStartDate(e.target.value)}
+                              className="text-[10px] bg-[#334756] border border-[#334756] text-white rounded-lg px-2 py-1 outline-none focus:border-[#FF4C29]"
+                            />
+                          ) : (
+                            <span className="text-xs font-bold text-slate-500 italic">Pendiente</span>
+                          )}
                         </div>
-                      ))
-                    )}
+                        <div className="flex justify-between items-center">
+                          <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Fin</span>
+                          <span className="text-xs font-bold text-slate-300">{activePlan.endDate || 'N/A'}</span>
+                        </div>
+                      </div>
+                    </div>
 
-                    {(user.role === 'padrino' || user.role === 'admin') && (
-                      isAddingTask ? (
-                        <form onSubmit={handleAddTask} className="mt-4 flex gap-2">
-                          <input 
-                            type="text" 
-                            value={newTaskDesc}
-                            onChange={(e) => setNewTaskDesc(e.target.value)}
-                            placeholder="Descripción de la tarea..."
-                            className="flex-grow bg-[#2C394B] border border-[#334756] text-white rounded-xl px-3 py-2 text-xs outline-none focus:border-[#FF4C29]"
-                            autoFocus
-                          />
-                          <button type="submit" className="bg-[#FF4C29] text-white p-2 rounded-xl hover:bg-[#FF4C29]/80">
-                            <Plus size={16} />
-                          </button>
-                          <button type="button" onClick={() => setIsAddingTask(false)} className="bg-[#334756] text-white p-2 rounded-xl hover:bg-[#334756]/80">
-                            Cancelar
-                          </button>
-                        </form>
-                      ) : (
-                        <button 
-                          onClick={() => setIsAddingTask(true)}
-                          className="mt-4 w-full py-3 border-2 border-dashed border-[#334756] rounded-2xl text-slate-500 hover:text-[#FF4C29] hover:border-[#FF4C29]/30 transition-colors flex items-center justify-center gap-2 text-xs font-bold uppercase tracking-widest"
-                        >
-                          <Plus size={16} /> Agregar Tarea
-                        </button>
-                      )
-                    )}
+                    <div className="bg-[#2C394B] rounded-2xl p-5 border border-[#334756] flex flex-col justify-center relative overflow-hidden">
+                      <div className="absolute top-0 right-0 p-2">
+                        <div className="bg-[#FF4C29]/10 text-[#FF4C29] text-[8px] font-black px-2 py-1 rounded-lg border border-[#FF4C29]/20 uppercase tracking-widest">
+                          Tarea 2: Funcional
+                        </div>
+                      </div>
+                      <div className="flex justify-between items-center mb-2">
+                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Terminación</span>
+                        <span className="text-lg font-black text-[#FF4C29]">{activePlan.progress}%</span>
+                      </div>
+                      <div className="h-3 bg-[#082032] rounded-full overflow-hidden border border-[#334756] p-0.5">
+                        <div 
+                          className="h-full bg-gradient-to-r from-[#FF4C29] to-[#FF4C29]/60 rounded-full transition-all duration-1000 shadow-[0_0_15px_rgba(255,76,41,0.3)]"
+                          style={{ width: `${activePlan.progress}%` }}
+                        />
+                      </div>
+                      <div className="mt-3 flex justify-between items-center">
+                        <div className="flex items-center gap-2">
+                          <Clock size={10} className="text-slate-500" />
+                          <span className="text-[8px] font-bold text-slate-500 uppercase tracking-widest">
+                            {activePlan.startDate ? (
+                              (() => {
+                                const end = new Date(activePlan.endDate);
+                                const now = new Date();
+                                const diff = Math.ceil((end.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+                                return diff > 0 ? `${diff} días restantes` : 'Plazo cumplido';
+                              })()
+                            ) : 'Esperando inicio'}
+                          </span>
+                        </div>
+                        <span className="text-[8px] font-black text-slate-600 uppercase tracking-widest">
+                          {tasks.filter(t => t.isCompleted).length} / {tasks.length} Tareas
+                        </span>
+                      </div>
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
 
-              {/* Right Column: Chat */}
-              <div className="w-1/2 flex flex-col bg-[#082032]/50">
-                <div className="p-4 border-b border-[#334756] bg-[#2C394B] shrink-0 flex items-center justify-between">
-                  <h4 className="text-sm font-black text-white uppercase tracking-widest flex items-center gap-2">
-                    <MessageSquare size={16} className="text-[#FF4C29]" /> Chat del Plan
-                  </h4>
-                  {user.role === 'admin' && (
-                    <div className="flex items-center gap-2">
-                      {showConfirmClear ? (
-                        <div className="flex items-center gap-2 bg-rose-500/10 p-1 rounded-lg border border-rose-500/20">
-                          <span className="text-[8px] font-bold text-rose-400 uppercase">¿Borrar todo?</span>
+              {/* Tasks List */}
+              <div className="flex-grow p-6 overflow-y-auto custom-scrollbar flex flex-col gap-8">
+                <div>
+                    <div className="flex items-center justify-between mb-6">
+                      <h4 className="text-sm font-black text-white uppercase tracking-widest flex items-center gap-2">
+                        <CheckCircle2 size={16} className="text-[#FF4C29]" /> Tareas Compartidas
+                      </h4>
+                      <div className="flex items-center gap-4">
+                        {activePlan.startDate && (
+                          <div className="flex items-center gap-1.5 bg-[#FF4C29]/10 px-3 py-1 rounded-full border border-[#FF4C29]/20">
+                            <Clock size={12} className="text-[#FF4C29]" />
+                            <span className="text-[10px] font-black text-[#FF4C29] uppercase tracking-widest">
+                              Día {Math.floor((new Date().getTime() - new Date(activePlan.startDate).getTime()) / (1000 * 60 * 60 * 24))}
+                            </span>
+                          </div>
+                        )}
+                        {user.role === 'admin' && tasks.length > 0 && (
                           <button 
-                            onClick={handleClearChat}
-                            className="text-[9px] font-black bg-rose-500 text-white px-2 py-1 rounded-md hover:bg-rose-600 transition-colors"
+                            onClick={handleDeleteDuplicateTasks}
+                            className="text-[10px] font-black text-slate-500 hover:text-[#FF4C29] uppercase tracking-widest flex items-center gap-1 transition-colors"
+                            title="Eliminar tareas repetidas"
                           >
-                            Sí
+                            <Trash2 size={12} /> Limpiar Duplicados
                           </button>
+                        )}
+                      </div>
+                    </div>
+
+                  <div className="space-y-8">
+                    {tasks.length === 0 ? (
+                      <div className="text-center py-20 bg-[#2C394B]/30 rounded-[40px] border-2 border-dashed border-[#334756] flex flex-col items-center">
+                        <Clock size={48} className="text-[#334756] mb-4" />
+                        <p className="text-sm text-slate-500 font-bold uppercase tracking-widest mb-6">No hay tareas asignadas aún</p>
+                        
+                        {((user.role === 'padrino' || user.role === 'admin') && !user.isMaster) && (
                           <button 
-                            onClick={() => setShowConfirmClear(false)}
-                            className="text-[9px] font-black bg-[#334756] text-white px-2 py-1 rounded-md hover:bg-[#334756]/80 transition-colors"
+                            onClick={handleLoadFuncionalTasks}
+                            className="bg-[#FF4C29] text-white px-8 py-4 rounded-2xl font-black uppercase tracking-widest text-xs hover:scale-105 active:scale-95 transition-all shadow-xl shadow-[#FF4C29]/20 flex items-center gap-3"
                           >
-                            No
+                            <Plus size={18} /> Cargar Funcional 7 Días
                           </button>
-                        </div>
-                      ) : (
-                        <button 
-                          onClick={() => setShowConfirmClear(true)}
-                          className="text-[9px] font-black text-rose-400 uppercase tracking-widest hover:bg-rose-500/10 px-2 py-1 rounded-lg transition-colors border border-transparent hover:border-rose-500/20"
-                        >
-                          Limpiar Chat
-                        </button>
-                      )}
-                    </div>
-                  )}
-                </div>
-                
-                <div className="flex-grow p-6 overflow-y-auto custom-scrollbar flex flex-col gap-4">
-                  {messages.length === 0 ? (
-                    <div className="text-center py-10">
-                      <MessageSquare size={32} className="text-[#334756] mx-auto mb-2" />
-                      <p className="text-xs text-slate-500 font-bold uppercase tracking-widest">No hay mensajes aún</p>
-                    </div>
-                  ) : (
-                    messages.map(msg => {
-                      const isMine = msg.senderId === user.id;
-                      const timeString = new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                      return (
-                        <div key={msg.id} className={`flex flex-col gap-1 ${isMine ? 'items-end' : 'items-start'}`}>
-                          <div className={`px-4 py-3 max-w-[80%] shadow-sm ${
-                            isMine 
-                              ? 'bg-[#FF4C29] text-white rounded-2xl rounded-tr-none' 
-                              : 'bg-[#2C394B] border border-[#334756] text-white rounded-2xl rounded-tl-none'
-                          }`}>
-                            {msg.text && <p className={`text-xs ${isMine ? 'text-white' : 'text-slate-200'}`}>{msg.text}</p>}
-                            {msg.attachments && msg.attachments.length > 0 && (
-                              <div className="mt-2 space-y-2">
-                                {msg.attachments.map((url: string, i: number) => (
-                                  <img 
-                                    key={i} 
-                                    src={url} 
-                                    alt="Attachment" 
-                                    className="max-w-full rounded-lg border border-white/10"
-                                    referrerPolicy="no-referrer"
-                                  />
+                        )}
+                      </div>
+                    ) : (
+                      <div className="space-y-6">
+                        {/* Functional Tasks Group */}
+                        {tasks.some(t => t.isFuncional || FUNCIONAL_TASKS.some(ft => ft.description === t.description)) && (
+                          <div className="bg-[#2C394B]/50 rounded-3xl border border-[#334756] overflow-hidden">
+                            <button 
+                              onClick={() => setIsFuncionalExpanded(!isFuncionalExpanded)}
+                              className="w-full p-6 flex items-center justify-between hover:bg-[#FF4C29]/5 transition-all group"
+                            >
+                              <div className="flex items-center gap-4">
+                                <div className="w-12 h-12 rounded-2xl bg-[#FF4C29]/10 flex items-center justify-center text-[#FF4C29] group-hover:scale-110 transition-transform">
+                                  <Layout size={24} />
+                                </div>
+                                <div className="text-left">
+                                  <h5 className="text-sm font-black text-white uppercase tracking-widest">Funcional 7 Días</h5>
+                                  <div className="flex items-center gap-3 mt-1">
+                                    <div className="flex items-center gap-1">
+                                      <CheckCircle2 size={10} className="text-emerald-500" />
+                                      <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">
+                                        {tasks.filter(t => (t.isFuncional || FUNCIONAL_TASKS.some(ft => ft.description === t.description)) && t.isCompleted).length} / {tasks.filter(t => t.isFuncional || FUNCIONAL_TASKS.some(ft => ft.description === t.description)).length} Completadas
+                                      </span>
+                                    </div>
+                                    <div className="w-24 h-1 bg-[#082032] rounded-full overflow-hidden">
+                                      <div 
+                                        className="h-full bg-emerald-500 transition-all duration-500"
+                                        style={{ 
+                                          width: `${Math.round((tasks.filter(t => (t.isFuncional || FUNCIONAL_TASKS.some(ft => ft.description === t.description)) && t.isCompleted).length / Math.max(1, tasks.filter(t => t.isFuncional || FUNCIONAL_TASKS.some(ft => ft.description === t.description)).length)) * 100)}%` 
+                                        }}
+                                      />
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                              <div className={`transition-transform duration-300 ${isFuncionalExpanded ? 'rotate-180' : ''}`}>
+                                <ChevronDown size={20} className="text-slate-500" />
+                              </div>
+                            </button>
+
+                            {isFuncionalExpanded && (
+                              <div className="p-6 pt-0 border-t border-[#334756]/50">
+                                {Object.entries(
+                                  tasks.filter(t => t.isFuncional || FUNCIONAL_TASKS.some(ft => ft.description === t.description)).reduce((acc, task) => {
+                                    const pilar = task.pilar || 'GENERAL';
+                                    if (!acc[pilar]) acc[pilar] = [];
+                                    acc[pilar].push(task);
+                                    return acc;
+                                  }, {} as Record<string, any[]>)
+                                ).map(([pilar, pilarTasks]) => (
+                                  <div key={pilar} className="mt-6 first:mt-4 space-y-4">
+                                    <h6 className="text-[10px] font-black text-[#FF4C29] uppercase tracking-[0.2em] border-l-2 border-[#FF4C29] pl-2 py-0.5">
+                                      {pilar}
+                                    </h6>
+                                    <div className="flex flex-col gap-2">
+                                      {(pilarTasks as any[]).map(task => renderTaskItem(task))}
+                                    </div>
+                                  </div>
                                 ))}
                               </div>
                             )}
                           </div>
-                          <span className="text-[9px] font-bold text-slate-500 uppercase">{timeString}</span>
-                        </div>
-                      );
-                    })
-                  )}
-                </div>
+                        )}
 
-                <div className="p-4 bg-[#2C394B] border-t border-[#334756] shrink-0">
-                  <form onSubmit={handleSendMessage} className="flex items-center gap-2 bg-[#082032] border border-[#334756] rounded-2xl p-2 focus-within:border-[#FF4C29] focus-within:ring-2 focus-within:ring-[#FF4C29]/20 transition-all">
-                    <button type="button" className="p-2 text-slate-400 hover:text-[#FF4C29] transition-colors">
-                      <Paperclip size={18} />
-                    </button>
-                    <input 
-                      type="text" 
-                      value={newMessage}
-                      onChange={(e) => setNewMessage(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' && !e.shiftKey) {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          handleSendMessage(e);
-                        }
-                      }}
-                      placeholder="Escribe un mensaje..." 
-                      className="flex-grow bg-transparent text-white text-xs outline-none px-2"
-                    />
-                    <button 
-                      type="submit" 
-                      disabled={!newMessage.trim()}
-                      className="p-2 bg-[#FF4C29] text-white rounded-xl hover:bg-[#FF4C29]/80 transition-colors shadow-sm disabled:opacity-50"
-                    >
-                      <Send size={16} />
-                    </button>
-                  </form>
+                        {/* Other Tasks grouped by Pilar */}
+                        {Object.entries(
+                          tasks.filter(t => !t.isFuncional && !FUNCIONAL_TASKS.some(ft => ft.description === t.description)).reduce((acc, task) => {
+                            const pilar = task.pilar || 'GENERAL';
+                            if (!acc[pilar]) acc[pilar] = [];
+                            acc[pilar].push(task);
+                            return acc;
+                          }, {} as Record<string, any[]>)
+                        ).map(([pilar, pilarTasks]) => (
+                          <div key={pilar} className="space-y-4">
+                            <h5 className="text-[11px] font-black text-[#FF4C29] uppercase tracking-[0.2em] border-l-4 border-[#FF4C29] pl-3 py-1">
+                              {pilar}
+                            </h5>
+                            <div className="flex flex-col gap-2">
+                              {(pilarTasks as any[]).map(task => renderTaskItem(task))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {((user.role === 'padrino' || user.role === 'admin') && !user.isMaster) && (
+                      <div className="mt-8 pt-8 border-t border-[#334756]">
+                        {isAddingTask ? (
+                          <form onSubmit={handleAddTask} className="flex flex-col gap-4 bg-[#2C394B] p-6 rounded-3xl border border-[#334756]">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              <div>
+                                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 block">Pilar</label>
+                                <select 
+                                  value={newTaskPilar}
+                                  onChange={(e) => setNewTaskPilar(e.target.value)}
+                                  className="w-full bg-[#082032] border border-[#334756] text-white rounded-xl px-4 py-3 text-xs outline-none focus:border-[#FF4C29]"
+                                >
+                                  <option value="GENERAL">GENERAL</option>
+                                  <option value="SAFETY">SAFETY</option>
+                                  <option value="PEOPLE">PEOPLE</option>
+                                  <option value="GESTION">GESTION</option>
+                                  <option value="FLOTA">FLOTA</option>
+                                  <option value="REPARTO">REPARTO</option>
+                                </select>
+                              </div>
+                              <div>
+                                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 block">Descripción</label>
+                                <input 
+                                  type="text" 
+                                  value={newTaskDesc}
+                                  onChange={(e) => setNewTaskDesc(e.target.value)}
+                                  placeholder="¿Qué debe hacer?"
+                                  className="w-full bg-[#082032] border border-[#334756] text-white rounded-xl px-4 py-3 text-xs outline-none focus:border-[#FF4C29]"
+                                  autoFocus
+                                />
+                              </div>
+                            </div>
+                            <div className="flex gap-2 justify-end">
+                              <button type="button" onClick={() => setIsAddingTask(false)} className="px-6 py-3 bg-[#334756] text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-[#334756]/80 transition-all">
+                                Cancelar
+                              </button>
+                              <button type="submit" className="px-6 py-3 bg-[#FF4C29] text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-[#FF4C29]/80 transition-all">
+                                Guardar Tarea
+                              </button>
+                            </div>
+                          </form>
+                        ) : (
+                          <button 
+                            onClick={() => setIsAddingTask(true)}
+                            className="w-full py-6 border-2 border-dashed border-[#334756] rounded-[32px] text-slate-500 hover:text-[#FF4C29] hover:border-[#FF4C29]/30 transition-all flex items-center justify-center gap-3 text-xs font-black uppercase tracking-[0.2em]"
+                          >
+                            <Plus size={20} /> Agregar Nueva Tarea
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
+
+              {/* Floating Chat Button */}
+              <div className="fixed bottom-8 right-8 z-50">
+                <button 
+                  onClick={() => setIsChatOpen(!isChatOpen)}
+                  className="w-16 h-16 bg-[#FF4C29] text-white rounded-full shadow-2xl shadow-[#FF4C29]/40 flex items-center justify-center hover:scale-110 active:scale-95 transition-all relative group"
+                >
+                  <span className="text-2xl group-hover:rotate-12 transition-transform">💬</span>
+                  {unreadCounts[activePlan.id] > 0 && (
+                    <span className="absolute -top-1 -right-1 bg-white text-[#FF4C29] text-[10px] font-black px-2 py-1 rounded-full border-2 border-[#FF4C29] animate-bounce">
+                      {unreadCounts[activePlan.id]}
+                    </span>
+                  )}
+                </button>
+              </div>
+
+              {/* Chat Overlay/Modal */}
+              {isChatOpen && (
+                <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 md:p-8 bg-[#082032]/80 backdrop-blur-sm">
+                  <div className="w-full max-w-2xl h-full max-h-[800px] bg-[#082032] border border-[#334756] rounded-[40px] shadow-2xl overflow-hidden flex flex-col animate-in fade-in zoom-in duration-300">
+                    <div className="p-6 border-b border-[#334756] bg-[#2C394B] shrink-0 flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-[#FF4C29]/10 rounded-xl flex items-center justify-center border border-[#FF4C29]/20">
+                          <MessageSquare size={20} className="text-[#FF4C29]" />
+                        </div>
+                        <div>
+                          <h4 className="text-sm font-black text-white uppercase tracking-widest">Chat del Plan</h4>
+                          <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">Acompañamiento en tiempo real</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-4">
+                        {(user.role === 'admin' && !user.isMaster) && (
+                          <div className="flex items-center gap-2">
+                            {showConfirmClear ? (
+                              <div className="flex items-center gap-2 bg-rose-500/10 p-1 rounded-lg border border-rose-500/20">
+                                <span className="text-[8px] font-bold text-rose-400 uppercase">¿Borrar?</span>
+                                <button onClick={handleClearChat} className="text-[9px] font-black bg-rose-500 text-white px-2 py-1 rounded-md">Sí</button>
+                                <button onClick={() => setShowConfirmClear(false)} className="text-[9px] font-black bg-[#334756] text-white px-2 py-1 rounded-md">No</button>
+                              </div>
+                            ) : (
+                              <button onClick={() => setShowConfirmClear(true)} className="text-[9px] font-black text-rose-400 uppercase tracking-widest hover:bg-rose-500/10 px-2 py-1 rounded-lg">Limpiar</button>
+                            )}
+                          </div>
+                        )}
+                        <button 
+                          onClick={() => setIsChatOpen(false)}
+                          className="p-2 hover:bg-[#334756] rounded-xl transition-colors text-slate-400"
+                        >
+                          <ChevronRight size={24} />
+                        </button>
+                      </div>
+                    </div>
+                    
+                    <div className="flex-grow p-6 overflow-y-auto custom-scrollbar flex flex-col gap-4 bg-[#082032]/50">
+                      {messages.length === 0 ? (
+                        <div className="text-center py-20">
+                          <div className="w-20 h-20 bg-[#2C394B] rounded-full flex items-center justify-center mx-auto mb-4 border border-[#334756]">
+                            <MessageSquare size={32} className="text-[#334756]" />
+                          </div>
+                          <p className="text-xs text-slate-500 font-bold uppercase tracking-widest">No hay mensajes aún</p>
+                        </div>
+                      ) : (
+                        messages.map(msg => {
+                          const isMine = msg.senderId === user.id;
+                          const timeString = new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                          return (
+                            <div key={msg.id} className={`flex flex-col gap-1 ${isMine ? 'items-end' : 'items-start'}`}>
+                              <div className={`px-5 py-3 max-w-[85%] shadow-lg ${
+                                isMine 
+                                  ? 'bg-[#FF4C29] text-white rounded-[24px] rounded-tr-none' 
+                                  : 'bg-[#2C394B] border border-[#334756] text-white rounded-[24px] rounded-tl-none'
+                              }`}>
+                                {msg.text && <p className="text-xs leading-relaxed">{msg.text}</p>}
+                                {msg.attachments && msg.attachments.length > 0 && (
+                                  <div className="mt-2 space-y-2">
+                                    {msg.attachments.map((url: string, i: number) => (
+                                      <img 
+                                        key={i} 
+                                        src={url} 
+                                        alt="Attachment" 
+                                        className="max-w-full rounded-lg border border-white/10"
+                                        referrerPolicy="no-referrer"
+                                      />
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                              <span className="text-[9px] font-bold text-slate-600 uppercase px-2">{timeString}</span>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+
+                    <div className="p-6 bg-[#2C394B] border-t border-[#334756] shrink-0">
+                      {user.isMaster ? (
+                        <div className="bg-[#082032] border border-[#334756] rounded-2xl p-4 text-center">
+                          <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Modo Visualización: No puedes enviar mensajes</p>
+                        </div>
+                      ) : (
+                        <form onSubmit={handleSendMessage} className="flex items-center gap-3 bg-[#082032] border border-[#334756] rounded-[24px] p-2 focus-within:border-[#FF4C29] focus-within:ring-4 focus-within:ring-[#FF4C29]/10 transition-all">
+                          <button type="button" className="p-3 text-slate-500 hover:text-[#FF4C29] transition-colors">
+                            <Paperclip size={20} />
+                          </button>
+                          <input 
+                            type="text" 
+                            value={newMessage}
+                            onChange={(e) => setNewMessage(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' && !e.shiftKey) {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                handleSendMessage(e);
+                              }
+                            }}
+                            placeholder="Escribe un mensaje..." 
+                            className="flex-grow bg-transparent text-white text-xs outline-none px-2"
+                          />
+                          <button 
+                            type="submit" 
+                            disabled={!newMessage.trim()}
+                            className="w-12 h-12 bg-[#FF4C29] text-white rounded-2xl flex items-center justify-center hover:bg-[#FF4C29]/80 transition-all disabled:opacity-50 shadow-lg shadow-[#FF4C29]/20"
+                          >
+                            <Send size={18} />
+                          </button>
+                        </form>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}
