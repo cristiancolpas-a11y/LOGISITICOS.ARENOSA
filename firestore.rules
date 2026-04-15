@@ -48,21 +48,27 @@ service cloud.firestore {
     }
 
     function isValidMentorshipTask(data) {
-      return hasOnlyAllowedFields(['planId', 'description', 'pilar', 'matriz', 'requiresEvidence', 'evidenceUrl', 'evidenceName', 'evidenceType', 'uploadedAt', 'isCompleted', 'completedAt', 'createdAt', 'isFuncional', 'id']) &&
-             (!('planId' in data) || isValidString(data.planId, 1, 50)) &&
-             (!('description' in data) || isValidString(data.description, 1, 1000)) &&
+      return hasOnlyAllowedFields(['planId', 'sheetTaskId', 'description', 'pilar', 'matriz', 'subnivel', 'requiresEvidence', 'evidenceUrl', 'evidenceName', 'evidenceType', 'uploadedAt', 'evidenceDate', 'isCompleted', 'completedAt', 'createdAt', 'updatedAt', 'isFuncional', 'id', 'padrinoName', 'apadrinadoName']) &&
+             (!('planId' in data) || isValidString(data.planId, 1, 100)) &&
+             (!('sheetTaskId' in data) || isValidString(data.sheetTaskId, 1, 1000)) &&
+             (!('description' in data) || isValidString(data.description, 1, 2000)) &&
              (!('isCompleted' in data) || data.isCompleted is bool) &&
              (!('pilar' in data) || data.pilar is string) &&
              (!('matriz' in data) || data.matriz is string) &&
+             (!('subnivel' in data) || data.subnivel is string) &&
              (!('requiresEvidence' in data) || data.requiresEvidence is bool) &&
              (!('evidenceUrl' in data) || data.evidenceUrl is string) &&
              (!('evidenceName' in data) || data.evidenceName is string) &&
              (!('evidenceType' in data) || data.evidenceType is string) &&
              (!('uploadedAt' in data) || data.uploadedAt is string) &&
+             (!('updatedAt' in data) || data.updatedAt is string) &&
+             (!('evidenceDate' in data) || data.evidenceDate is string) &&
              (!('completedAt' in data) || data.completedAt == null || data.completedAt is string) &&
              (!('isFuncional' in data) || data.isFuncional is bool) &&
              (!('createdAt' in data) || data.createdAt is string) &&
-             (!('id' in data) || data.id is string);
+             (!('id' in data) || data.id is string) &&
+             (!('padrinoName' in data) || data.padrinoName is string) &&
+             (!('apadrinadoName' in data) || data.apadrinadoName is string);
     }
     
     function isValidMentorshipMessage(data) {
@@ -111,7 +117,7 @@ service cloud.firestore {
     
     match /mentorship_tasks/{taskId} {
       allow read: if isAuthenticated();
-      allow create: if isAuthenticated() && isValidMentorshipTask(request.resource.data) && hasRequiredFields(['planId', 'description', 'isCompleted', 'createdAt']);
+      allow create: if isAuthenticated() && isValidMentorshipTask(request.resource.data) && hasRequiredFields(['planId', 'description', 'createdAt']);
       allow update: if isAuthenticated() && isValidMentorshipTask(request.resource.data);
       allow delete: if isAuthenticated(); // Allow deleting tasks
     }

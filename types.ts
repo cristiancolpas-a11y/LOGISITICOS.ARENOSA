@@ -271,4 +271,27 @@ export interface MentorshipPlan {
   progress: number;
   padrinoName?: string;
   apadrinadoName?: string;
+  planIdBase?: string; // Relación con ID_Base de Tareas
+}
+
+export interface MentorshipTask {
+  id: string;
+  idBase: string;
+  padrino: string;
+  codPadrino: string;
+  apadrinado: string;
+  codApadrinado: string;
+  subnivel: string;
+  tarea: string;
+  pilar: string;
+  matriz: string;
+  estado: string;
+  fechaCreacion: string;
+  validador: string;
+  evidencia: string;
+  isCompleted?: boolean;
+  evidenceUrl?: string;
+  evidenceName?: string;
+  evidenceType?: string;
+  uploadedAt?: string;
 }

@@ -178,7 +178,7 @@ const App: React.FC = () => {
         )}
 
         {/* CONTENT AREA */}
-        <div className="flex-grow p-6 md:p-8 overflow-y-auto bg-[#f8fafc] custom-scrollbar">
+        <div className={`flex-grow overflow-y-auto bg-[#f8fafc] custom-scrollbar ${isPeopleView ? 'p-0' : 'p-6 md:p-8'}`}>
           {activeView === 'acis' && (
             <SafetyModule onBack={() => setShowEntryMenu(true)} vehicles={vehicles} isView={true} searchTerm={searchTerm} />
           )}

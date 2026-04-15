@@ -1,11 +1,12 @@
 
 import Papa from 'papaparse';
-import { Vehicle, Driver, Report, MileageLog, Calibration, WashReport, Fine, Preventive, AvailabilityRecord, FleetComposition, OperationalIndicator, WorkshopRecord, SafetyRecord, StaffMember, CashlessRecord, PeopleUser, MentorshipPlan } from '../types';
+import { Vehicle, Driver, Report, MileageLog, Calibration, WashReport, Fine, Preventive, AvailabilityRecord, FleetComposition, OperationalIndicator, WorkshopRecord, SafetyRecord, StaffMember, CashlessRecord, PeopleUser, MentorshipPlan, MentorshipTask } from '../types';
 import { calculateStatus, normalizePlate, normalizeStr, getDaysDiff } from '../utils';
 
 const GOOGLE_SCRIPT_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbw9u62w53DHA54Sck1PmB6tdqzv9TK3OmKuoYU0TYwTdkZTtKnPI5Bnh4uIpnL6kUav/exec'; 
 const GOOGLE_SCRIPT_FINES_URL = 'https://script.google.com/macros/s/AKfycbxVjLry2rjYYsFLk_3PERq5KH39P73Oda3LFPKOu2uVammhZenY0I01-SeDU0tAy9uk/exec';
 const GOOGLE_SCRIPT_WORKSHOP_URL = 'https://script.google.com/macros/s/AKfycbxU8y_M1pACZaBf92uc0W01I4UqCqmOwnt7uUZSTezkSMQZgXYSLGv0laaGlR9UGJ8q/exec';
+const GOOGLE_SCRIPT_MENTORSHIP_URL = 'https://script.google.com/macros/s/AKfycbww5aRwEEOCAtWxqN1-g_Jxhn3-FsTV402lgMg8XljQJKO5lsR2UDqw0MWttKd-f6KL/exec';
 
 // HOJA MAESTRA (Donde se encuentran los Vehículos y Conductores)
 const REAL_MASTER_ID = '1GPfhWOUM8As4vVRirzWgSzFwvQ01I6EAc14uGoWc98U';
@@ -986,26 +987,23 @@ export const fetchCashlessFromSheet = async (): Promise<CashlessRecord[]> => {
 };
 
 const sendToGAS = async (payload: any, url: string = GOOGLE_SCRIPT_WEB_APP_URL) => {
-  console.log(`Enviando a GAS (${payload.method}):`, payload);
+  console.log(`[GAS] Enviando petición (${payload.method})...`);
   try {
-    const response = await fetch(url, { 
+    // Usamos mode: 'no-cors' y text/plain para máxima compatibilidad con GAS
+    await fetch(url, { 
       method: 'POST',
+      mode: 'no-cors',
       headers: {
         'Content-Type': 'text/plain;charset=utf-8',
       },
       body: JSON.stringify(payload) 
     });
     
-    if (response.ok) {
-      const result = await response.json();
-      console.log("Respuesta de GAS:", result);
-      return result.status === 'success';
-    }
-    return true;
-  } catch (err) { 
-    // Los errores de CORS suelen caer aquí, pero el script se ejecuta igual
-    console.log("Petición enviada (posible error de CORS ignorado):", err);
+    console.log(`[GAS] Petición enviada con éxito (modo no-cors).`);
     return true; 
+  } catch (err) { 
+    console.error("[GAS] Error al enviar:", err);
+    return false; 
   }
 };
 
@@ -1083,6 +1081,7 @@ export const fetchMentorshipPlansFromSheet = async (): Promise<MentorshipPlan[]>
             .filter(row => row && row[1] && row[3]) // Padrino_ID y Apadrinado_ID
             .map((row, i): MentorshipPlan => ({
               id: cleanSheetValue(row[0]) ? `${cleanSheetValue(row[0])}-${i}` : `plan-${i}`,
+              planIdBase: cleanSheetValue(row[0]), // ID de la hoja Plan Padrino
               padrinoId: cleanSheetValue(row[1]),
               padrinoCode: cleanSheetValue(row[2]),
               apadrinadoId: cleanSheetValue(row[3]),
@@ -1105,4 +1104,64 @@ export const fetchMentorshipPlansFromSheet = async (): Promise<MentorshipPlan[]>
   } catch (e) { return []; }
 };
 
-export const submitMentorshipPlanUpdateToSheet = async (data: any): Promise<void> => { await sendToGAS({ method: 'POST_MENTORSHIP_PLAN', data }); };
+export const fetchMentorshipTasksFromSheet = async (planId?: string): Promise<MentorshipTask[]> => {
+  try {
+    const url = `${BASE_URL_PLAN_PADRINO}&sheet=${encodeURIComponent('Tareas')}${getCacheBuster()}`;
+    const response = await fetch(url);
+    const csvText = await response.text();
+    if (!csvText || csvText.includes("<!DOCTYPE html")) return [];
+
+    return new Promise((resolve) => {
+      Papa.parse(csvText, {
+        header: false, skipEmptyLines: 'greedy',
+        complete: (results) => {
+          const rows = results.data as any[][];
+          if (!rows || rows.length < 2) { resolve([]); return; }
+          
+          let tasks = rows.slice(1)
+            .filter(row => row && row[0]) // ID_Base
+            .map((row, i): MentorshipTask => {
+              const idBase = cleanSheetValue(row[0]);
+              const subnivel = cleanSheetValue(row[5]);
+              const pilar = cleanSheetValue(row[7]);
+              const matriz = cleanSheetValue(row[8]);
+              const tarea = cleanSheetValue(row[6]);
+              
+              // Create a stable unique ID based on task content
+              const uniqueId = `${idBase}-${subnivel}-${pilar}-${matriz}-${tarea}`.replace(/\s+/g, '_').toLowerCase();
+
+              return {
+                id: uniqueId,
+                idBase,
+                padrino: cleanSheetValue(row[1]),
+                codPadrino: cleanSheetValue(row[2]),
+                apadrinado: cleanSheetValue(row[3]),
+                codApadrinado: cleanSheetValue(row[4]),
+                subnivel,
+                tarea,
+                pilar,
+                matriz,
+                estado: cleanSheetValue(row[9]),
+                fechaCreacion: parseFlexibleDate(row[10]),
+                validador: cleanSheetValue(row[11]),
+                evidencia: cleanSheetValue(row[12]) // Index 12 is Column M
+              };
+            });
+
+          if (planId) {
+            tasks = tasks.filter(t => t.idBase === planId || planId.indexOf(t.idBase) === 0);
+          }
+          resolve(tasks);
+        },
+        error: () => resolve([])
+      });
+    });
+  } catch (e) { return []; }
+};
+
+export const submitMentorshipPlanUpdateToSheet = async (data: any): Promise<boolean> => { 
+  return await sendToGAS({ method: 'POST_MENTORSHIP_PLAN', data }, GOOGLE_SCRIPT_MENTORSHIP_URL); 
+};
+export const submitMentorshipTaskEvidenceToSheet = async (data: any): Promise<boolean> => { 
+  return await sendToGAS({ method: 'POST_MENTORSHIP_EVIDENCE', data }, GOOGLE_SCRIPT_MENTORSHIP_URL); 
+};

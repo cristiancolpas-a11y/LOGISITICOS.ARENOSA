@@ -3,7 +3,7 @@ import {
   Users, ChevronLeft, LogIn, Search, Plus, MessageSquare, 
   CheckCircle2, Clock, Calendar, Send, Paperclip, Activity,
   ChevronRight, Circle, Bell, Camera, Image as ImageIcon, Upload,
-  AlertCircle, FileText, Trash2, ChevronDown, Layout
+  AlertCircle, FileText, Trash2, ChevronDown, Layout, RefreshCw
 } from 'lucide-react';
 import { auth, db } from '../firebase';
 import { signInAnonymously } from 'firebase/auth';
@@ -12,8 +12,8 @@ import {
   addDoc, updateDoc, deleteDoc, onSnapshot, serverTimestamp, orderBy,
   writeBatch, arrayUnion, limit
 } from 'firebase/firestore';
-import { fetchPeopleUsersFromSheet, fetchMentorshipPlansFromSheet, submitMentorshipPlanUpdateToSheet } from '../services/sheetService';
-import { PeopleUser, MentorshipPlan } from '../types';
+import { fetchPeopleUsersFromSheet, fetchMentorshipPlansFromSheet, fetchMentorshipTasksFromSheet, submitMentorshipPlanUpdateToSheet, submitMentorshipTaskEvidenceToSheet } from '../services/sheetService';
+import { PeopleUser, MentorshipPlan, MentorshipTask } from '../types';
 
 interface PeopleModuleProps {
   onBack: () => void;
@@ -64,40 +64,42 @@ const PeopleModule: React.FC<PeopleModuleProps> = ({ onBack }) => {
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [showDetails, setShowDetails] = useState(true);
   
-  const [tasks, setTasks] = useState<any[]>([]);
+  const [tasks, setTasks] = useState<MentorshipTask[]>([]);
   const [isLoadingTasks, setIsLoadingTasks] = useState(false);
-  const [isGeneratingTasks, setIsGeneratingTasks] = useState(false);
-  const [isFuncionalExpanded, setIsFuncionalExpanded] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [isUploadingEvidence, setIsUploadingEvidence] = useState<string | null>(null);
+
+  const handleSyncData = async () => {
+    if (isSyncing) return;
+    setIsSyncing(true);
+    try {
+      const fetchedPlans = await fetchMentorshipPlansFromSheet();
+      setPlans(fetchedPlans);
+      if (activePlan) {
+        const updatedActivePlan = fetchedPlans.find(p => p.id === activePlan.id);
+        if (updatedActivePlan) {
+          setActivePlan(updatedActivePlan);
+          const fetchedTasks = await fetchMentorshipTasksFromSheet(updatedActivePlan.planIdBase || updatedActivePlan.id);
+          setTasks(fetchedTasks);
+        }
+      }
+      alert('✅ Datos sincronizados con éxito desde Google Sheets');
+    } catch (error) {
+      console.error('Error syncing data:', error);
+      alert('❌ Error al sincronizar datos');
+    } finally {
+      setIsSyncing(false);
+    }
+  };
   const [messages, setMessages] = useState<any[]>([]);
-  const generatedPlansRef = useRef<Set<string>>(new Set());
   const [newMessage, setNewMessage] = useState('');
-  const [newTaskDesc, setNewTaskDesc] = useState('');
-  const [newTaskPilar, setNewTaskPilar] = useState('GENERAL');
-  const [isAddingTask, setIsAddingTask] = useState(false);
   const [showConfirmClear, setShowConfirmClear] = useState(false);
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
   const [lastNotificationTime, setLastNotificationTime] = useState(Date.now());
-
-  const FUNCIONAL_TASKS = [
-    { pilar: 'SAFETY', description: '1. Mapa de riesgos y matriz de EPPs', matriz: 'CONDUCTOR DE REPARTO', requiresEvidence: true },
-    { pilar: 'SAFETY', description: '2. Plan de tráfico del Centro de distribución y segregación HM', matriz: 'CONDUCTOR DE REPARTO', requiresEvidence: true },
-    { pilar: 'SAFETY', description: '3. Rutas críticas del Centro de distribución', matriz: 'CONDUCTOR DE REPARTO', requiresEvidence: true },
-    { pilar: 'SAFETY', description: '4. Programa de manejo a la defensiva', matriz: 'CONDUCTOR DE REPARTO', requiresEvidence: true },
-    { pilar: 'SAFETY', description: '5. ACIS, Incidentes y accidentes', matriz: 'CONDUCTOR DE REPARTO', requiresEvidence: true },
-    { pilar: 'SAFETY', description: '6. Proceso de carga y descarga', matriz: 'CONDUCTOR DE REPARTO', requiresEvidence: true },
-    { pilar: 'SAFETY', description: '7. Manejo de materiales', matriz: 'CONDUCTOR DE REPARTO', requiresEvidence: true },
-    { pilar: 'SAFETY', description: '8. Reduccion de situaciones violentas', matriz: 'CONDUCTOR DE REPARTO', requiresEvidence: true },
-    { pilar: 'SAFETY', description: '9. Suministro de combustible para los vehiculos', matriz: 'CONDUCTOR DE REPARTO', requiresEvidence: true },
-    { pilar: 'SAFETY', description: '10. Requisitos legales de tiempo de descanso', matriz: 'CONDUCTOR DE REPARTO', requiresEvidence: true },
-    { pilar: 'SAFETY', description: '11. Requisitos legales de seguridad de la carga', matriz: 'CONDUCTOR DE REPARTO', requiresEvidence: true },
-    { pilar: 'PEOPLE', description: '1. Estuctura de la empresa', matriz: 'CONDUCTOR DE REPARTO', requiresEvidence: true },
-    { pilar: 'PEOPLE', description: '2. Contrato y compensacion laboral', matriz: 'CONDUCTOR DE REPARTO', requiresEvidence: true },
-    { pilar: 'GESTION', description: '1. Rol y procesos del área de trabajo', matriz: 'CONDUCTOR DE REPARTO', requiresEvidence: true },
-    { pilar: 'FLOTA', description: '1. Inspección 360 de camión', matriz: 'CONDUCTOR DE REPARTO', requiresEvidence: true },
-    { pilar: 'REPARTO', description: '1. SOP en ruta', matriz: 'CONDUCTOR DE REPARTO', requiresEvidence: true },
-    { pilar: 'REPARTO', description: '2. Políticas de calidad', matriz: 'CONDUCTOR DE REPARTO', requiresEvidence: true },
-    { pilar: 'SAFETY', description: '12 ACIS, Incidentes y accidentes', matriz: 'AUXILIAR DE REPARTO', requiresEvidence: true },
-  ];
+  const [expandedSubniveles, setExpandedSubniveles] = useState<Record<string, boolean>>({});
+  const [allMentorshipTasks, setAllMentorshipTasks] = useState<MentorshipTask[]>([]);
+  const [taskPendingUpload, setTaskPendingUpload] = useState<{taskId: string, file: File} | null>(null);
+  const [selectedEvidenceDate, setSelectedEvidenceDate] = useState(new Date().toISOString().split('T')[0]);
 
   const playNotificationSound = () => {
     try {
@@ -364,20 +366,47 @@ const PeopleModule: React.FC<PeopleModuleProps> = ({ onBack }) => {
   useEffect(() => {
     if (!activePlan || !user) return;
 
-    const tasksRef = collection(db, 'mentorship_tasks');
-    // Simplified query to avoid composite index requirement for now
-    const qTasks = query(tasksRef, where('planId', '==', activePlan.id));
-    setIsLoadingTasks(true);
-    const unsubTasks = onSnapshot(qTasks, (snapshot) => {
-      const loadedTasks = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      // Sort in memory if needed
-      loadedTasks.sort((a: any, b: any) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
-      setTasks(loadedTasks);
-      setIsLoadingTasks(false);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.GET, 'mentorship_tasks');
-      setIsLoadingTasks(false);
-    });
+    const loadTasksFromSheet = async () => {
+      setIsLoadingTasks(true);
+      try {
+        const allTasks = await fetchMentorshipTasksFromSheet();
+        setAllMentorshipTasks(allTasks);
+        
+        // Filter tasks related to this plan by ID_Base
+        const planTasks = allTasks.filter(t => t.idBase === activePlan.planIdBase);
+        
+        // Merge with Firestore state (completion and evidence)
+        const tasksRef = collection(db, 'mentorship_tasks');
+        const qTasks = query(tasksRef, where('planId', '==', activePlan.id));
+        const snapshot = await getDocs(qTasks);
+        const firestoreTasks = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+        const mergedTasks = planTasks.map(sheetTask => {
+          const fsTask = firestoreTasks.find((ft: any) => ft.sheetTaskId === sheetTask.id) as any;
+          
+          // Prioritize sheet data. If sheet has evidence, use it.
+          // If sheet is empty, we don't show Firestore evidence to ensure sync with sheet.
+          const hasSheetEvidence = sheetTask.evidencia && sheetTask.evidencia.trim() !== '';
+          
+          return {
+            ...sheetTask,
+            isCompleted: sheetTask.estado === 'COMPLETADO',
+            evidenceUrl: hasSheetEvidence ? sheetTask.evidencia : '',
+            evidenceName: hasSheetEvidence ? (fsTask?.evidenceName || 'Evidencia') : '',
+            evidenceType: hasSheetEvidence ? (fsTask?.evidenceType || 'image/jpeg') : '',
+            uploadedAt: hasSheetEvidence ? (fsTask?.uploadedAt || '') : ''
+          };
+        });
+
+        setTasks(mergedTasks);
+      } catch (error) {
+        console.error("Error loading tasks from sheet:", error);
+      } finally {
+        setIsLoadingTasks(false);
+      }
+    };
+
+    loadTasksFromSheet();
 
     const msgsRef = collection(db, 'mentorship_messages');
     // Simplified query to avoid composite index requirement for now
@@ -391,7 +420,6 @@ const PeopleModule: React.FC<PeopleModuleProps> = ({ onBack }) => {
     });
 
     return () => {
-      unsubTasks();
       unsubMsgs();
     };
   }, [activePlan]);
@@ -408,28 +436,7 @@ const PeopleModule: React.FC<PeopleModuleProps> = ({ onBack }) => {
     }
   }, [isChatOpen, activePlan, messages, user?.id]);
 
-  // Automatically load tasks if plan has start date but no tasks
-  useEffect(() => {
-    if (activePlan && activePlan.startDate && !isLoadingTasks && !isGeneratingTasks && tasks.length === 0 && (user.role === 'padrino' || user.role === 'admin') && !user.isMaster) {
-      const start = new Date(activePlan.startDate);
-      const now = new Date();
-      const diffMs = now.getTime() - start.getTime();
-      const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-      
-      // Only load after 7 days of start date
-      if (diffDays >= 7) {
-        if (!generatedPlansRef.current.has(activePlan.id)) {
-          generatedPlansRef.current.add(activePlan.id);
-          console.log(`Auto-loading functional tasks for plan: ${activePlan.id} (Day ${diffDays})`);
-          handleLoadFuncionalTasks();
-        }
-      } else {
-        console.log(`Plan ${activePlan.id} is on day ${diffDays}. Waiting for day 7 to load functional tasks.`);
-      }
-    }
-  }, [activePlan?.id, activePlan?.startDate, tasks.length, isLoadingTasks, isGeneratingTasks]);
-
-  const renderTaskItem = (task: any) => (
+  const renderTaskItem = (task: MentorshipTask) => (
     <div 
       key={task.id} 
       className={`flex flex-col gap-2 p-3 rounded-xl border transition-all ${
@@ -447,40 +454,27 @@ const PeopleModule: React.FC<PeopleModuleProps> = ({ onBack }) => {
           {task.isCompleted ? <CheckCircle2 size={18} /> : <Circle size={18} />}
         </button>
         <div className="flex-grow flex items-center justify-between gap-4">
-          <p className={`text-[11px] font-bold ${task.isCompleted ? 'text-slate-400 line-through opacity-70' : 'text-slate-200'}`}>
-            {task.description}
-          </p>
-          <div className="flex items-center gap-2 shrink-0">
-            {task.requiresEvidence && !task.evidenceUrl && (
-              <span className="flex items-center gap-1 text-[7px] font-black text-[#FF4C29] bg-[#FF4C29]/10 px-1.5 py-0.5 rounded uppercase">
-                <AlertCircle size={7} /> Evidencia
-              </span>
-            )}
-            {task.matriz && (
-              <span className="text-[7px] font-black text-slate-500 bg-slate-500/10 px-1.5 py-0.5 rounded uppercase">
-                {task.matriz}
-              </span>
-            )}
-            <p className={`text-[8px] font-black uppercase tracking-widest ${
-              task.isCompleted ? 'text-emerald-400' : 'text-slate-500'
-            }`}>
-              {task.isCompleted ? 'OK' : 'PEND'}
-            </p>
+          <div className="flex flex-col">
+            <span className={`text-[10px] font-bold leading-tight ${task.isCompleted ? 'text-slate-400 line-through' : 'text-white'}`}>
+              {task.tarea}
+            </span>
+            <div className="flex items-center gap-2 mt-1">
+              <span className="text-[8px] font-black text-[#FF4C29] uppercase tracking-widest">{task.pilar}</span>
+              {task.matriz && (
+                <span className="text-[8px] font-bold text-slate-500 uppercase tracking-widest">• {task.matriz}</span>
+              )}
+            </div>
           </div>
-        </div>
-      </div>
-
-      {task.requiresEvidence && (
-        <div className="pt-2 border-t border-[#334756]/50">
+          
           {task.evidenceUrl ? (
-            <div className="flex items-center justify-between bg-[#082032]/50 p-1.5 rounded-lg border border-[#334756]">
-              <div className="flex items-center gap-2 overflow-hidden">
+            <div className="flex items-center gap-3 bg-[#082032] px-3 py-1.5 rounded-lg border border-[#334756]">
+              <div className="flex items-center gap-2">
                 {task.evidenceType?.startsWith('image/') ? (
                   <ImageIcon size={12} className="text-[#FF4C29] shrink-0" />
                 ) : (
                   <FileText size={12} className="text-[#FF4C29] shrink-0" />
                 )}
-                <span className="text-[9px] font-bold text-slate-400 truncate max-w-[150px]">{task.evidenceName}</span>
+                <span className="text-[9px] font-bold text-slate-400 truncate max-w-[150px]">{task.evidenceName || 'Evidencia'}</span>
               </div>
               <div className="flex items-center gap-2">
                 <button 
@@ -489,23 +483,32 @@ const PeopleModule: React.FC<PeopleModuleProps> = ({ onBack }) => {
                 >
                   Ver
                 </button>
-                {((user.role === 'padrino' || user.role === 'admin') && !user.isMaster && !task.isCompleted) && (
-                  <label className="cursor-pointer">
-                    <Upload size={12} className="text-slate-500 hover:text-[#FF4C29]" />
-                    <input 
-                      type="file" 
-                      className="hidden" 
-                      onChange={(e) => handleUploadEvidence(task.id, e)}
-                      accept="image/*,.pdf,.doc,.docx"
-                    />
-                  </label>
+                {(!task.isCompleted) && (
+                  isUploadingEvidence === task.id ? (
+                    <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-[#FF4C29]"></div>
+                  ) : (
+                    <label className="cursor-pointer">
+                      <Camera size={12} className="text-slate-500 hover:text-[#FF4C29]" />
+                      <input 
+                        type="file" 
+                        className="hidden" 
+                        onChange={(e) => handleUploadEvidence(task.id, e)}
+                        accept="image/*,.pdf,.doc,.docx"
+                      />
+                    </label>
+                  )
                 )}
               </div>
             </div>
           ) : (
-            ((user.role === 'padrino' || user.role === 'admin') && !user.isMaster) ? (
+            isUploadingEvidence === task.id ? (
+              <div className="flex items-center justify-center gap-2 py-2 border border-dashed border-[#FF4C29]/50 bg-[#FF4C29]/5 rounded-xl">
+                <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-[#FF4C29]"></div>
+                <span className="text-[9px] font-black text-[#FF4C29] uppercase tracking-widest">Subiendo...</span>
+              </div>
+            ) : (
               <label className="flex items-center justify-center gap-2 py-2 border border-dashed border-[#334756] rounded-xl cursor-pointer hover:border-[#FF4C29]/50 hover:bg-[#FF4C29]/5 transition-all group">
-                <Upload size={14} className="text-slate-500 group-hover:text-[#FF4C29]" />
+                <Camera size={14} className="text-slate-500 group-hover:text-[#FF4C29]" />
                 <span className="text-[9px] font-black text-slate-500 group-hover:text-[#FF4C29] uppercase tracking-widest">Subir Evidencia</span>
                 <input 
                   type="file" 
@@ -514,14 +517,10 @@ const PeopleModule: React.FC<PeopleModuleProps> = ({ onBack }) => {
                   accept="image/*,.pdf,.doc,.docx"
                 />
               </label>
-            ) : (
-              <div className="flex items-center gap-2 text-slate-600 italic text-[9px]">
-                <Clock size={10} /> Esperando evidencia...
-              </div>
             )
           )}
         </div>
-      )}
+      </div>
     </div>
   );
 
@@ -626,12 +625,6 @@ const PeopleModule: React.FC<PeopleModuleProps> = ({ onBack }) => {
           deletedCount++;
         } else {
           seen.add(key);
-          // Also fix missing isFuncional flag if it matches functional tasks
-          const isFunc = FUNCIONAL_TASKS.some(ft => ft.description === data.description);
-          if (isFunc && !data.isFuncional) {
-            batch.update(doc.ref, { isFuncional: true });
-            updatedCount++;
-          }
         }
       });
 
@@ -647,20 +640,37 @@ const PeopleModule: React.FC<PeopleModuleProps> = ({ onBack }) => {
     }
   };
 
-  const handleToggleTask = async (task: any) => {
+  const handleToggleTask = async (task: MentorshipTask) => {
     if ((user.role !== 'padrino' && user.role !== 'admin') || user.isMaster) return; // Only padrino or admin can validate tasks
     
-    if (task.requiresEvidence && !task.evidenceUrl && !task.isCompleted) {
+    if (task.evidencia && !task.evidenceUrl && !task.isCompleted) {
       alert("Esta tarea requiere evidencias (fotos/documentos) antes de ser marcada como completada.");
       return;
     }
 
     try {
       const isCompleted = !task.isCompleted;
-      await updateDoc(doc(db, 'mentorship_tasks', task.id), {
-        isCompleted,
-        completedAt: isCompleted ? new Date().toISOString() : null
-      });
+      
+      // Find or create Firestore doc for this task
+      const tasksRef = collection(db, 'mentorship_tasks');
+      const q = query(tasksRef, where('planId', '==', activePlan.id), where('sheetTaskId', '==', task.id));
+      const snapshot = await getDocs(q);
+      
+      if (snapshot.empty) {
+        await addDoc(tasksRef, {
+          planId: activePlan.id,
+          sheetTaskId: task.id,
+          description: task.tarea,
+          isCompleted,
+          completedAt: isCompleted ? new Date().toISOString() : null,
+          createdAt: new Date().toISOString()
+        });
+      } else {
+        await updateDoc(doc(db, 'mentorship_tasks', snapshot.docs[0].id), {
+          isCompleted,
+          completedAt: isCompleted ? new Date().toISOString() : null
+        });
+      }
 
       // Recalculate progress
       const updatedTasks = tasks.map(t => t.id === task.id ? { ...t, isCompleted } : t);
@@ -682,116 +692,156 @@ const PeopleModule: React.FC<PeopleModuleProps> = ({ onBack }) => {
     }
   };
 
-  const handleAddTask = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newTaskDesc.trim() || !activePlan || (user.role !== 'padrino' && user.role !== 'admin') || user.isMaster) return;
+  const compressImage = (base64Str: string, watermarkText?: string, maxWidth = 1200, maxHeight = 1200): Promise<string> => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.src = base64Str;
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
 
-    try {
-      await addDoc(collection(db, 'mentorship_tasks'), {
-        planId: activePlan.id,
-        description: newTaskDesc.trim(),
-        pilar: newTaskPilar,
-        isCompleted: false,
-        isFuncional: false,
-        requiresEvidence: newTaskDesc.toLowerCase().includes('evidencia') || newTaskDesc.toLowerCase().includes('funcional'),
-        createdAt: new Date().toISOString()
-      });
-      
-      setNewTaskDesc('');
-      setIsAddingTask(false);
-      
-      // Recalculate progress
-      const newTotal = tasks.length + 1;
-      const completedCount = tasks.filter(t => t.isCompleted).length;
-      const progress = Math.round((completedCount / newTotal) * 100);
-      
-      await updateDoc(doc(db, 'mentorship_plans', activePlan.id), {
-        progress,
-        lastActivityAt: new Date().toISOString()
-      });
+        if (width > height) {
+          if (width > maxWidth) {
+            height *= maxWidth / width;
+            width = maxWidth;
+          }
+        } else {
+          if (height > maxHeight) {
+            width *= maxHeight / height;
+            height = maxHeight;
+          }
+        }
 
-      // Update Sheet
-      await submitMentorshipPlanUpdateToSheet({
-        id: activePlan.id,
-        progress: progress
-      });
-    } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, 'mentorship_tasks (add)');
-    }
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          resolve(base64Str);
+          return;
+        }
+
+        ctx.drawImage(img, 0, 0, width, height);
+
+        if (watermarkText) {
+          const fontSize = Math.max(14, Math.floor(width / 25));
+          ctx.font = `bold ${fontSize}px Inter, sans-serif`;
+          
+          // Background for text readability
+          const textWidth = ctx.measureText(watermarkText).width;
+          const padding = fontSize / 2;
+          ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+          ctx.fillRect(width - textWidth - padding * 3, height - fontSize - padding * 2.5, textWidth + padding * 2, fontSize + padding * 1.5);
+
+          ctx.fillStyle = 'white';
+          ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
+          ctx.shadowBlur = 4;
+          ctx.textAlign = 'right';
+          ctx.textBaseline = 'bottom';
+          
+          ctx.fillText(watermarkText, width - padding * 2, height - padding * 2);
+        }
+
+        resolve(canvas.toDataURL('image/jpeg', 0.85));
+      };
+      img.onerror = () => resolve(base64Str);
+    });
   };
 
-  const handleLoadFuncionalTasks = async () => {
-    if (!activePlan || (user.role !== 'padrino' && user.role !== 'admin') || user.isMaster || isGeneratingTasks) return;
-    
-    setIsGeneratingTasks(true);
-    try {
-      // Double check in DB to prevent race conditions
-      const tasksRef = collection(db, 'mentorship_tasks');
-      const q = query(tasksRef, where('planId', '==', activePlan.id));
-      const snapshot = await getDocs(q);
+  const processAndUploadEvidence = async (taskId: string, file: File, date: string) => {
+    setIsUploadingEvidence(taskId);
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      let base64 = event.target?.result as string;
       
-      if (!snapshot.empty) {
-        console.log("Tasks already exist for this plan, skipping auto-load.");
-        setIsGeneratingTasks(false);
-        return;
+      // Compress and add watermark if it's an image
+      if (file.type.startsWith('image/')) {
+        const watermark = `FECHA: ${date} | ${activePlan?.apadrinadoName || ''}`;
+        base64 = await compressImage(base64, watermark);
       }
 
-      const batch = writeBatch(db);
-      
-      FUNCIONAL_TASKS.forEach(task => {
-        const newDocRef = doc(tasksRef);
-        batch.set(newDocRef, {
+      try {
+        const evidenceData = {
+          evidenceUrl: base64,
+          evidenceName: file.name,
+          evidenceType: file.type,
+          uploadedAt: new Date().toISOString(),
+          evidenceDate: date
+        };
+
+        // Find or create Firestore doc for this task
+        const tasksRef = collection(db, 'mentorship_tasks');
+        // Simplified query to avoid composite index requirement
+        const q = query(tasksRef, where('planId', '==', activePlan.id));
+        const snapshot = await getDocs(q);
+        
+        const task = tasks.find(t => t.id === taskId);
+        const existingDoc = snapshot.docs.find(d => d.data().sheetTaskId === taskId);
+
+        const taskDocRef = existingDoc 
+          ? doc(db, 'mentorship_tasks', existingDoc.id)
+          : doc(tasksRef); // Auto-generate ID if not exists
+
+        const finalData = {
           planId: activePlan.id,
-          description: task.description,
-          pilar: task.pilar,
-          matriz: task.matriz,
-          requiresEvidence: true,
-          isCompleted: false,
-          isFuncional: true,
-          createdAt: new Date().toISOString()
+          sheetTaskId: taskId,
+          description: task?.tarea || 'Tarea desconocida',
+          pilar: task?.pilar || '',
+          matriz: task?.matriz || '',
+          subnivel: task?.subnivel || '',
+          ...evidenceData,
+          isCompleted: task?.estado === 'COMPLETADO' || false,
+          updatedAt: new Date().toISOString()
+        };
+
+        if (!existingDoc) {
+          (finalData as any).createdAt = new Date().toISOString();
+        }
+
+        // Use setDoc with merge: true to avoid "No document to update" errors
+        await setDoc(taskDocRef, finalData, { merge: true });
+
+        // Also submit to Google Sheet
+        const success = await submitMentorshipTaskEvidenceToSheet({
+          planId: activePlan.planIdBase || activePlan.id,
+          taskId: taskId,
+          taskDescription: task?.tarea || 'Tarea desconocida',
+          pilar: task?.pilar || '',
+          matriz: task?.matriz || '',
+          subnivel: task?.subnivel || '',
+          padrinoName: activePlan.padrinoName,
+          apadrinadoName: activePlan.apadrinadoName,
+          ...evidenceData
         });
-      });
-      
-      await batch.commit();
-      
-      // Reset progress to 0 since we added many new tasks
-      await updateDoc(doc(db, 'mentorship_plans', activePlan.id), {
-        progress: 0,
-        lastActivityAt: new Date().toISOString()
-      });
-      
-      await submitMentorshipPlanUpdateToSheet({
-        id: activePlan.id,
-        progress: 0
-      });
-    } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, 'mentorship_tasks (batch)');
-      alert("Error al cargar las tareas funcionales. Revisa la consola.");
-    } finally {
-      setIsGeneratingTasks(false);
-    }
+
+        if (success) {
+          alert("✅ Evidencia subida con éxito a la hoja de cálculo.");
+        } else {
+          alert("⚠️ La evidencia se guardó en el sistema, pero no se pudo sincronizar con Excel. Por favor, revisa la hoja LOGS en tu Google Sheets.");
+        }
+
+      } catch (error) {
+        handleFirestoreError(error, OperationType.UPDATE, 'mentorship_tasks (evidence)');
+        alert("❌ Error crítico al procesar la evidencia: " + (error instanceof Error ? error.message : String(error)));
+      } finally {
+        setIsUploadingEvidence(null);
+        setTaskPendingUpload(null);
+      }
+    };
+    reader.readAsDataURL(file);
   };
 
   const handleUploadEvidence = async (taskId: string, e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !activePlan) return;
-
-    const reader = new FileReader();
-    reader.onload = async (event) => {
-      const base64 = event.target?.result as string;
-      try {
-        await updateDoc(doc(db, 'mentorship_tasks', taskId), {
-          evidenceUrl: base64,
-          evidenceName: file.name,
-          evidenceType: file.type,
-          uploadedAt: new Date().toISOString()
-        });
-      } catch (error) {
-        handleFirestoreError(error, OperationType.UPDATE, 'mentorship_tasks (evidence)');
-        alert("Error al subir la evidencia. El archivo podría ser demasiado grande.");
-      }
-    };
-    reader.readAsDataURL(file);
+    
+    // If it's an image, we need a date for the watermark
+    if (file.type.startsWith('image/')) {
+      setTaskPendingUpload({ taskId, file });
+    } else {
+      // For other files, upload directly with current date
+      processAndUploadEvidence(taskId, file, new Date().toISOString().split('T')[0]);
+    }
   };
 
   const handleUpdateStartDate = async (date: string) => {
@@ -823,10 +873,10 @@ const PeopleModule: React.FC<PeopleModuleProps> = ({ onBack }) => {
 
   if (activeSection === 'menu') {
     return (
-      <div className="flex flex-col h-full max-w-4xl mx-auto p-8 bg-[#082032]">
-        <div className="flex items-center justify-between mb-12">
-          <div className="flex items-center gap-6">
-            <div className="w-20 h-20 bg-[#2C394B] rounded-3xl flex items-center justify-center shadow-xl border border-[#334756] overflow-hidden p-2 relative">
+      <div className="flex flex-col h-full w-full max-w-4xl mx-auto p-4 md:p-8 bg-[#082032]">
+        <div className="flex items-center justify-between mb-8 md:mb-12">
+          <div className="flex items-center gap-4 md:gap-6">
+            <div className="w-16 h-16 md:w-20 md:h-20 bg-[#2C394B] rounded-2xl md:rounded-3xl flex items-center justify-center shadow-xl border border-[#334756] overflow-hidden p-2 relative">
               <img 
                 src="https://lh3.googleusercontent.com/d/1RpVUh4KZ0s0tBpPynwFuwjiVqT0ddSDM" 
                 alt="People Logo" 
@@ -834,26 +884,26 @@ const PeopleModule: React.FC<PeopleModuleProps> = ({ onBack }) => {
               />
             </div>
             <div>
-              <h1 className="text-4xl font-black text-white uppercase tracking-tight">People</h1>
-              <p className="text-slate-400 font-bold uppercase tracking-widest text-xs mt-1">Gestión de Talento Humano</p>
+              <h1 className="text-2xl md:text-4xl font-black text-white uppercase tracking-tight">People</h1>
+              <p className="text-slate-400 font-bold uppercase tracking-widest text-[10px] md:text-xs mt-1">Gestión de Talento Humano</p>
             </div>
           </div>
           <button 
             onClick={onBack}
-            className="p-3 hover:bg-[#2C394B] rounded-2xl transition-colors text-slate-400"
+            className="p-2 md:p-3 hover:bg-[#2C394B] rounded-xl md:rounded-2xl transition-colors text-slate-400"
           >
             <ChevronLeft size={24} />
           </button>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-8">
           <button 
             onClick={() => setActiveSection('plan-padrino')}
-            className="group relative bg-[#082032] border-2 border-[#334756] rounded-[40px] p-8 text-left hover:border-[#FF4C29] hover:shadow-2xl hover:shadow-[#FF4C29]/10 transition-all duration-500 overflow-hidden"
+            className="group relative bg-[#082032] border-2 border-[#334756] rounded-[30px] md:rounded-[40px] p-6 md:p-8 text-left hover:border-[#FF4C29] hover:shadow-2xl hover:shadow-[#FF4C29]/10 transition-all duration-500 overflow-hidden"
           >
             <div className="absolute top-0 right-0 w-32 h-32 bg-[#FF4C29]/5 rounded-full -mr-16 -mt-16 group-hover:scale-150 transition-transform duration-700" />
             
-            <div className="w-16 h-16 bg-[#2C394B] rounded-2xl flex items-center justify-center mb-6 shadow-sm border border-[#334756] overflow-hidden group-hover:scale-110 transition-transform duration-500 p-2 relative">
+            <div className="w-12 h-12 md:w-16 md:h-16 bg-[#2C394B] rounded-xl md:rounded-2xl flex items-center justify-center mb-4 md:mb-6 shadow-sm border border-[#334756] overflow-hidden group-hover:scale-110 transition-transform duration-500 p-2 relative">
               <img 
                 src="https://lh3.googleusercontent.com/d/1RpVUh4KZ0s0tBpPynwFuwjiVqT0ddSDM" 
                 alt="People Logo" 
@@ -861,22 +911,22 @@ const PeopleModule: React.FC<PeopleModuleProps> = ({ onBack }) => {
               />
             </div>
             
-            <h3 className="text-2xl font-black text-white uppercase tracking-tight mb-2">Plan Padrino</h3>
-            <p className="text-slate-400 text-sm font-medium leading-relaxed">
+            <h3 className="text-xl md:text-2xl font-black text-white uppercase tracking-tight mb-2">Plan Padrino</h3>
+            <p className="text-slate-400 text-xs md:text-sm font-medium leading-relaxed">
               Programa de mentoría y acompañamiento para el desarrollo profesional de nuestros colaboradores.
             </p>
             
-            <div className="mt-8 flex items-center gap-2 text-[#FF4C29] font-black uppercase tracking-widest text-[10px]">
+            <div className="mt-6 md:mt-8 flex items-center gap-2 text-[#FF4C29] font-black uppercase tracking-widest text-[10px]">
               Ingresar ahora <ChevronRight size={14} />
             </div>
           </button>
 
-          <div className="bg-[#2C394B]/30 border-2 border-dashed border-[#334756] rounded-[40px] p-8 flex flex-col items-center justify-center text-center opacity-60">
-            <div className="w-16 h-16 bg-[#2C394B] rounded-3xl flex items-center justify-center text-slate-500 mb-6 border border-[#334756]">
-              <Activity size={32} />
+          <div className="bg-[#2C394B]/30 border-2 border-dashed border-[#334756] rounded-[30px] md:rounded-[40px] p-6 md:p-8 flex flex-col items-center justify-center text-center opacity-60">
+            <div className="w-12 h-12 md:w-16 md:h-16 bg-[#2C394B] rounded-2xl md:rounded-3xl flex items-center justify-center text-slate-500 mb-4 md:mb-6 border border-[#334756]">
+              <Activity size={24} md:size={32} />
             </div>
-            <h3 className="text-xl font-black text-slate-500 uppercase tracking-tight mb-2">Próximamente</h3>
-            <p className="text-slate-600 text-xs font-bold uppercase tracking-widest">Nuevos módulos de gestión</p>
+            <h3 className="text-lg md:text-xl font-black text-slate-500 uppercase tracking-tight mb-2">Próximamente</h3>
+            <p className="text-slate-600 text-[10px] font-bold uppercase tracking-widest">Nuevos módulos de gestión</p>
           </div>
         </div>
       </div>
@@ -931,10 +981,10 @@ const PeopleModule: React.FC<PeopleModuleProps> = ({ onBack }) => {
   }
 
   return (
-    <div className="flex flex-col h-full bg-[#082032]">
-      <div className="flex items-center justify-between mb-8 bg-[#2C394B] p-6 rounded-3xl border border-[#334756] shadow-xl shrink-0">
-        <div className="flex items-center gap-4">
-          <div className="w-12 h-12 bg-[#334756] rounded-xl flex items-center justify-center border border-[#334756] overflow-hidden shadow-sm p-1 relative">
+    <div className="flex flex-col h-full bg-[#082032] w-full">
+      <div className="flex items-center justify-between mb-4 md:mb-8 bg-[#2C394B] p-4 md:p-6 rounded-2xl md:rounded-3xl border border-[#334756] shadow-xl shrink-0">
+        <div className="flex items-center gap-3 md:gap-4">
+          <div className="w-10 h-10 md:w-12 md:h-12 bg-[#334756] rounded-lg md:rounded-xl flex items-center justify-center border border-[#334756] overflow-hidden shadow-sm p-1 relative">
             <img 
               src="https://lh3.googleusercontent.com/d/1RpVUh4KZ0s0tBpPynwFuwjiVqT0ddSDM" 
               alt="People Logo" 
@@ -942,57 +992,57 @@ const PeopleModule: React.FC<PeopleModuleProps> = ({ onBack }) => {
             />
           </div>
           <div>
-            <h2 className="text-2xl font-black text-white uppercase tracking-tight">Plan Padrino</h2>
-            <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest">
+            <h2 className="text-lg md:text-2xl font-black text-white uppercase tracking-tight">Plan Padrino</h2>
+            <p className="text-slate-400 text-[8px] md:text-[10px] font-bold uppercase tracking-widest">
               {user.name} • {user.role}
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2 md:gap-4">
           <button 
             onClick={() => setUser(null)}
-            className="px-4 py-2 bg-[#334756] text-white rounded-xl font-black uppercase tracking-widest text-[10px] hover:bg-[#FF4C29] transition-all"
+            className="px-3 py-1.5 md:px-4 md:py-2 bg-[#334756] text-white rounded-lg md:rounded-xl font-black uppercase tracking-widest text-[8px] md:text-[10px] hover:bg-[#FF4C29] transition-all"
           >
             Cerrar Sesión
           </button>
         </div>
       </div>
       
-      <div className="flex-grow bg-[#2C394B] rounded-3xl border border-[#334756] shadow-xl overflow-hidden flex flex-col">
+      <div className="flex-grow bg-[#2C394B] rounded-2xl md:rounded-3xl border border-[#334756] shadow-xl overflow-hidden flex flex-col">
         {!activePlan ? (
-          <div className="p-8 h-full overflow-y-auto custom-scrollbar">
-            <div className="flex items-center justify-between mb-8">
+          <div className="p-4 md:p-8 h-full overflow-y-auto custom-scrollbar">
+            <div className="flex items-center justify-between mb-6 md:mb-8">
               <div>
-                <h3 className="text-xl font-black text-white uppercase tracking-tight">
+                <h3 className="text-lg md:text-xl font-black text-white uppercase tracking-tight">
                   {user.role === 'admin' ? 'Panel de Control Master' : 'Mis Planes de Mentoría'}
                 </h3>
-                <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest">
+                <p className="text-slate-400 text-[8px] md:text-[10px] font-bold uppercase tracking-widest">
                   {user.role === 'admin' ? 'Seguimiento global de todos los procesos' : (user.role === 'padrino' ? 'Colaboradores a tu cargo' : 'Tu proceso de formación')}
                 </p>
               </div>
               {user.role === 'admin' && (
-                <button className="px-4 py-2 bg-[#FF4C29] text-white rounded-xl font-black uppercase tracking-widest text-[10px] hover:bg-[#FF4C29]/80 transition-all flex items-center gap-2">
-                  <Plus size={16} /> Nuevo Plan
+                <button className="px-3 py-1.5 md:px-4 md:py-2 bg-[#FF4C29] text-white rounded-lg md:rounded-xl font-black uppercase tracking-widest text-[8px] md:text-[10px] hover:bg-[#FF4C29]/80 transition-all flex items-center gap-1 md:gap-2">
+                  <Plus size={14} md:size={16} /> Nuevo Plan
                 </button>
               )}
             </div>
 
             {plans.length === 0 ? (
-              <div className="text-center py-20">
-                <Users size={48} className="text-[#334756] mx-auto mb-4" />
-                <p className="text-slate-500 font-bold uppercase tracking-widest text-xs">No tienes planes activos en este momento</p>
+              <div className="text-center py-12 md:py-20">
+                <Users size={40} md:size={48} className="text-[#334756] mx-auto mb-4" />
+                <p className="text-slate-500 font-bold uppercase tracking-widest text-[10px] md:text-xs">No tienes planes activos en este momento</p>
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
                 {plans.map((plan, index) => (
                   <div 
                     key={`${plan.id}-${index}`}
                     onClick={() => setActivePlan(plan)}
-                    className="border-2 border-[#334756] bg-[#082032]/50 rounded-3xl p-6 hover:border-[#FF4C29] hover:shadow-lg transition-all cursor-pointer group"
+                    className="border-2 border-[#334756] bg-[#082032]/50 rounded-2xl md:rounded-3xl p-4 md:p-6 hover:border-[#FF4C29] hover:shadow-lg transition-all cursor-pointer group"
                   >
-                    <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center justify-between mb-3 md:mb-4">
                       <div className="flex items-center gap-2">
-                        <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest ${
+                        <span className={`px-2 py-0.5 md:px-3 md:py-1 rounded-full text-[8px] md:text-[9px] font-black uppercase tracking-widest ${
                           plan.status === 'Activo' ? 'bg-emerald-500/10 text-emerald-400' :
                           plan.status === 'En proceso' ? 'bg-amber-500/10 text-amber-400' :
                           'bg-[#334756] text-slate-400'
@@ -1000,21 +1050,21 @@ const PeopleModule: React.FC<PeopleModuleProps> = ({ onBack }) => {
                           {plan.status}
                         </span>
                         {unreadCounts[plan.id] > 0 && (
-                          <span className="bg-[#FF4C29] text-white text-[9px] font-black px-2 py-0.5 rounded-full animate-pulse flex items-center gap-1">
+                          <span className="bg-[#FF4C29] text-white text-[8px] md:text-[9px] font-black px-1.5 py-0.5 rounded-full animate-pulse flex items-center gap-1">
                             <Bell size={8} fill="currentColor" /> {unreadCounts[plan.id]}
                           </span>
                         )}
                       </div>
-                      <span className="text-slate-500 text-[10px] font-bold flex items-center gap-1">
-                        <Calendar size={12} /> {plan.endDate}
+                      <span className="text-slate-500 text-[8px] md:text-[10px] font-bold flex items-center gap-1">
+                        <Calendar size={10} md:size={12} /> {plan.endDate}
                       </span>
                     </div>
                     
-                    <div className="mb-6">
-                      <h4 className="text-lg font-black text-white uppercase leading-tight group-hover:text-[#FF4C29] transition-colors">
+                    <div className="mb-4 md:mb-6">
+                      <h4 className="text-base md:text-lg font-black text-white uppercase leading-tight group-hover:text-[#FF4C29] transition-colors">
                         {user.role === 'admin' ? plan.apadrinadoName : (plan.otherUser?.name || 'Usuario Desconocido')}
                       </h4>
-                      <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest">
+                      <p className="text-slate-500 text-[8px] md:text-[10px] font-bold uppercase tracking-widest">
                         {user.role === 'admin' 
                           ? `Padrino: ${plan.padrinoName}` 
                           : `${user.role === 'padrino' ? 'Apadrinado' : 'Padrino'} • ${plan.otherUser?.area || 'Sin área'}`
@@ -1022,12 +1072,12 @@ const PeopleModule: React.FC<PeopleModuleProps> = ({ onBack }) => {
                       </p>
                     </div>
 
-                    <div className="space-y-2">
-                      <div className="flex justify-between text-[10px] font-black uppercase tracking-widest">
+                    <div className="space-y-1.5 md:space-y-2">
+                      <div className="flex justify-between text-[8px] md:text-[10px] font-black uppercase tracking-widest">
                         <span className="text-slate-500">Avance</span>
                         <span className="text-[#FF4C29]">{plan.progress}%</span>
                       </div>
-                      <div className="w-full bg-[#334756] h-2 rounded-full overflow-hidden">
+                      <div className="w-full bg-[#334756] h-1.5 md:h-2 rounded-full overflow-hidden">
                         <div 
                           className="h-full bg-[#FF4C29] transition-all duration-1000"
                           style={{ width: `${plan.progress}%` }}
@@ -1042,28 +1092,52 @@ const PeopleModule: React.FC<PeopleModuleProps> = ({ onBack }) => {
         ) : (
           <div className="flex flex-col h-full bg-[#082032]">
             {/* Plan Header */}
-            <div className="p-6 border-b border-[#334756] flex items-center justify-between shrink-0 bg-[#2C394B]">
-              <div className="flex items-center gap-4">
+            <div className="p-4 md:p-6 border-b border-[#334756] flex flex-col sm:flex-row sm:items-center justify-between shrink-0 bg-[#2C394B] gap-4">
+              <div className="flex items-center gap-3 md:gap-4">
                 <button 
                   onClick={() => setActivePlan(null)}
-                  className="p-2 hover:bg-[#334756] rounded-xl transition-colors text-slate-400"
+                  className="p-1.5 md:p-2 hover:bg-[#334756] rounded-lg md:rounded-xl transition-colors text-slate-400"
                 >
-                  <ChevronLeft size={20} />
+                  <ChevronLeft size={20} md:size={24} />
                 </button>
                 <div>
-                  <h3 className="text-lg font-black text-white uppercase tracking-tight">
+                  <h3 className="text-base md:text-xl font-black text-white uppercase tracking-tight">
                     {user.role === 'admin' ? `${activePlan.apadrinadoName} (Apadrinado)` : (activePlan.otherUser?.name || 'Usuario Desconocido')}
                   </h3>
-                  <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest">
+                  <p className="text-slate-400 text-[8px] md:text-[10px] font-bold uppercase tracking-widest">
                     {user.role === 'admin' ? `Padrino: ${activePlan.padrinoName}` : 'Plan de Formación • ' + activePlan.status}
                   </p>
                 </div>
               </div>
-              <div className="flex items-center gap-4">
+              
+              <div className="flex items-center gap-2 md:gap-4 self-end sm:self-auto">
+                <button
+                  onClick={handleSyncData}
+                  disabled={isSyncing}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-[8px] md:text-[10px] font-bold uppercase tracking-widest transition-all ${
+                    isSyncing 
+                      ? 'bg-slate-700 text-slate-500 cursor-not-allowed' 
+                      : 'bg-indigo-600/20 text-indigo-400 hover:bg-indigo-600/30 border border-indigo-500/30'
+                  }`}
+                >
+                  <RefreshCw className={`w-3 h-3 ${isSyncing ? 'animate-spin' : ''}`} />
+                  {isSyncing ? 'Sincronizando...' : 'Sincronizar'}
+                </button>
                 <div className="text-right">
-                  <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Progreso</div>
-                  <div className="text-xl font-black text-[#FF4C29]">{activePlan.progress}%</div>
+                  <div className="text-[8px] md:text-[10px] font-black text-slate-500 uppercase tracking-widest">Progreso</div>
+                  <div className="text-lg md:text-xl font-black text-[#FF4C29]">{activePlan.progress}%</div>
                 </div>
+                <button 
+                  onClick={() => setIsChatOpen(true)}
+                  className="relative p-2 md:p-3 bg-[#FF4C29] text-white rounded-lg md:rounded-xl hover:bg-[#FF4C29]/80 transition-all shadow-lg shadow-[#FF4C29]/20"
+                >
+                  <MessageSquare size={18} md:size={20} />
+                  {unreadCounts[activePlan.id] > 0 && (
+                    <span className="absolute -top-1 -right-1 w-4 h-4 md:w-5 md:h-5 bg-white text-[#FF4C29] text-[8px] md:text-[10px] font-black rounded-full flex items-center justify-center border-2 border-[#FF4C29] animate-bounce">
+                      {unreadCounts[activePlan.id]}
+                    </span>
+                  )}
+                </button>
               </div>
             </div>
 
@@ -1110,13 +1184,8 @@ const PeopleModule: React.FC<PeopleModuleProps> = ({ onBack }) => {
                     </div>
 
                     <div className="bg-[#2C394B] rounded-2xl p-5 border border-[#334756] flex flex-col justify-center relative overflow-hidden">
-                      <div className="absolute top-0 right-0 p-2">
-                        <div className="bg-[#FF4C29]/10 text-[#FF4C29] text-[8px] font-black px-2 py-1 rounded-lg border border-[#FF4C29]/20 uppercase tracking-widest">
-                          Tarea 2: Funcional
-                        </div>
-                      </div>
                       <div className="flex justify-between items-center mb-2">
-                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Terminación</span>
+                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Progreso General</span>
                         <span className="text-lg font-black text-[#FF4C29]">{activePlan.progress}%</span>
                       </div>
                       <div className="h-3 bg-[#082032] rounded-full overflow-hidden border border-[#334756] p-0.5">
@@ -1149,11 +1218,11 @@ const PeopleModule: React.FC<PeopleModuleProps> = ({ onBack }) => {
               </div>
 
               {/* Tasks List */}
-              <div className="flex-grow p-6 overflow-y-auto custom-scrollbar flex flex-col gap-8">
+              <div className="flex-grow p-4 md:p-6 overflow-y-auto custom-scrollbar flex flex-col gap-6 md:gap-8">
                 <div>
-                    <div className="flex items-center justify-between mb-6">
-                      <h4 className="text-sm font-black text-white uppercase tracking-widest flex items-center gap-2">
-                        <CheckCircle2 size={16} className="text-[#FF4C29]" /> Tareas Compartidas
+                    <div className="flex items-center justify-between mb-4 md:mb-6">
+                      <h4 className="text-xs md:text-sm font-black text-white uppercase tracking-widest flex items-center gap-2">
+                        <CheckCircle2 size={14} md:size={16} className="text-[#FF4C29]" /> Tareas Compartidas
                       </h4>
                       <div className="flex items-center gap-4">
                         {activePlan.startDate && (
@@ -1164,165 +1233,86 @@ const PeopleModule: React.FC<PeopleModuleProps> = ({ onBack }) => {
                             </span>
                           </div>
                         )}
-                        {user.role === 'admin' && tasks.length > 0 && (
-                          <button 
-                            onClick={handleDeleteDuplicateTasks}
-                            className="text-[10px] font-black text-slate-500 hover:text-[#FF4C29] uppercase tracking-widest flex items-center gap-1 transition-colors"
-                            title="Eliminar tareas repetidas"
-                          >
-                            <Trash2 size={12} /> Limpiar Duplicados
-                          </button>
-                        )}
                       </div>
                     </div>
 
-                  <div className="space-y-8">
-                    {tasks.length === 0 ? (
-                      <div className="text-center py-20 bg-[#2C394B]/30 rounded-[40px] border-2 border-dashed border-[#334756] flex flex-col items-center">
-                        <Clock size={48} className="text-[#334756] mb-4" />
-                        <p className="text-sm text-slate-500 font-bold uppercase tracking-widest mb-6">No hay tareas asignadas aún</p>
-                        
-                        {((user.role === 'padrino' || user.role === 'admin') && !user.isMaster) && (
+                  <div className="space-y-6">
+                    {Object.entries(
+                      tasks.reduce((acc, task) => {
+                        const sub = task.subnivel || 'GENERAL';
+                        if (!acc[sub]) acc[sub] = [];
+                        acc[sub].push(task);
+                        return acc;
+                      }, {} as Record<string, MentorshipTask[]>)
+                    ).map(([subnivel, subTasks]) => {
+                      const typedSubTasks = subTasks as MentorshipTask[];
+                      return (
+                        <div key={subnivel} className="bg-[#2C394B]/50 rounded-3xl border border-[#334756] overflow-hidden">
                           <button 
-                            onClick={handleLoadFuncionalTasks}
-                            className="bg-[#FF4C29] text-white px-8 py-4 rounded-2xl font-black uppercase tracking-widest text-xs hover:scale-105 active:scale-95 transition-all shadow-xl shadow-[#FF4C29]/20 flex items-center gap-3"
+                            onClick={() => setExpandedSubniveles(prev => ({ ...prev, [subnivel]: !prev[subnivel] }))}
+                            className="w-full p-4 md:p-6 flex items-center justify-between hover:bg-[#FF4C29]/5 transition-all group"
                           >
-                            <Plus size={18} /> Cargar Funcional 7 Días
-                          </button>
-                        )}
-                      </div>
-                    ) : (
-                      <div className="space-y-6">
-                        {/* Functional Tasks Group */}
-                        {tasks.some(t => t.isFuncional || FUNCIONAL_TASKS.some(ft => ft.description === t.description)) && (
-                          <div className="bg-[#2C394B]/50 rounded-3xl border border-[#334756] overflow-hidden">
-                            <button 
-                              onClick={() => setIsFuncionalExpanded(!isFuncionalExpanded)}
-                              className="w-full p-6 flex items-center justify-between hover:bg-[#FF4C29]/5 transition-all group"
-                            >
-                              <div className="flex items-center gap-4">
-                                <div className="w-12 h-12 rounded-2xl bg-[#FF4C29]/10 flex items-center justify-center text-[#FF4C29] group-hover:scale-110 transition-transform">
-                                  <Layout size={24} />
-                                </div>
-                                <div className="text-left">
-                                  <h5 className="text-sm font-black text-white uppercase tracking-widest">Funcional 7 Días</h5>
-                                  <div className="flex items-center gap-3 mt-1">
-                                    <div className="flex items-center gap-1">
-                                      <CheckCircle2 size={10} className="text-emerald-500" />
-                                      <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">
-                                        {tasks.filter(t => (t.isFuncional || FUNCIONAL_TASKS.some(ft => ft.description === t.description)) && t.isCompleted).length} / {tasks.filter(t => t.isFuncional || FUNCIONAL_TASKS.some(ft => ft.description === t.description)).length} Completadas
-                                      </span>
-                                    </div>
-                                    <div className="w-24 h-1 bg-[#082032] rounded-full overflow-hidden">
-                                      <div 
-                                        className="h-full bg-emerald-500 transition-all duration-500"
-                                        style={{ 
-                                          width: `${Math.round((tasks.filter(t => (t.isFuncional || FUNCIONAL_TASKS.some(ft => ft.description === t.description)) && t.isCompleted).length / Math.max(1, tasks.filter(t => t.isFuncional || FUNCIONAL_TASKS.some(ft => ft.description === t.description)).length)) * 100)}%` 
-                                        }}
-                                      />
-                                    </div>
+                            <div className="flex items-center gap-3 md:gap-4">
+                              <div className="w-10 h-10 md:w-12 md:h-12 rounded-xl md:rounded-2xl bg-[#FF4C29]/10 flex items-center justify-center text-[#FF4C29] group-hover:scale-110 transition-transform shrink-0">
+                                <Layout size={20} md:size={24} />
+                              </div>
+                              <div className="text-left overflow-hidden">
+                                <h5 className="text-xs md:text-sm font-black text-white uppercase tracking-widest truncate">{subnivel}</h5>
+                                <div className="flex items-center gap-2 md:gap-3 mt-1">
+                                  <div className="flex items-center gap-1">
+                                    <CheckCircle2 size={8} md:size={10} className="text-emerald-500" />
+                                    <span className="text-[8px] md:text-[9px] font-bold text-slate-400 uppercase tracking-widest">
+                                      {typedSubTasks.filter(t => t.isCompleted).length} / {typedSubTasks.length}
+                                    </span>
+                                  </div>
+                                  <div className="w-16 md:w-24 h-1 bg-[#082032] rounded-full overflow-hidden">
+                                    <div 
+                                      className="h-full bg-emerald-500 transition-all duration-500"
+                                      style={{ 
+                                        width: `${Math.round((typedSubTasks.filter(t => t.isCompleted).length / Math.max(1, typedSubTasks.length)) * 100)}%` 
+                                      }}
+                                    />
                                   </div>
                                 </div>
                               </div>
-                              <div className={`transition-transform duration-300 ${isFuncionalExpanded ? 'rotate-180' : ''}`}>
-                                <ChevronDown size={20} className="text-slate-500" />
-                              </div>
-                            </button>
+                            </div>
+                            <div className={`transition-transform duration-300 ${expandedSubniveles[subnivel] ? 'rotate-180' : ''}`}>
+                              <ChevronDown size={20} className="text-slate-500" />
+                            </div>
+                          </button>
 
-                            {isFuncionalExpanded && (
-                              <div className="p-6 pt-0 border-t border-[#334756]/50">
-                                {Object.entries(
-                                  tasks.filter(t => t.isFuncional || FUNCIONAL_TASKS.some(ft => ft.description === t.description)).reduce((acc, task) => {
-                                    const pilar = task.pilar || 'GENERAL';
-                                    if (!acc[pilar]) acc[pilar] = [];
-                                    acc[pilar].push(task);
-                                    return acc;
-                                  }, {} as Record<string, any[]>)
-                                ).map(([pilar, pilarTasks]) => (
+                          {expandedSubniveles[subnivel] && (
+                            <div className="p-6 pt-0 border-t border-[#334756]/50 space-y-8">
+                              {Object.entries(
+                                typedSubTasks.reduce((acc, task) => {
+                                  const pilar = task.pilar || 'GENERAL';
+                                  if (!acc[pilar]) acc[pilar] = [];
+                                  acc[pilar].push(task);
+                                  return acc;
+                                }, {} as Record<string, MentorshipTask[]>)
+                              ).map(([pilar, pilarTasks]) => {
+                                const typedPilarTasks = pilarTasks as MentorshipTask[];
+                                return (
                                   <div key={pilar} className="mt-6 first:mt-4 space-y-4">
                                     <h6 className="text-[10px] font-black text-[#FF4C29] uppercase tracking-[0.2em] border-l-2 border-[#FF4C29] pl-2 py-0.5">
                                       {pilar}
                                     </h6>
                                     <div className="flex flex-col gap-2">
-                                      {(pilarTasks as any[]).map(task => renderTaskItem(task))}
+                                      {typedPilarTasks.map(task => renderTaskItem(task))}
                                     </div>
                                   </div>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        )}
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
 
-                        {/* Other Tasks grouped by Pilar */}
-                        {Object.entries(
-                          tasks.filter(t => !t.isFuncional && !FUNCIONAL_TASKS.some(ft => ft.description === t.description)).reduce((acc, task) => {
-                            const pilar = task.pilar || 'GENERAL';
-                            if (!acc[pilar]) acc[pilar] = [];
-                            acc[pilar].push(task);
-                            return acc;
-                          }, {} as Record<string, any[]>)
-                        ).map(([pilar, pilarTasks]) => (
-                          <div key={pilar} className="space-y-4">
-                            <h5 className="text-[11px] font-black text-[#FF4C29] uppercase tracking-[0.2em] border-l-4 border-[#FF4C29] pl-3 py-1">
-                              {pilar}
-                            </h5>
-                            <div className="flex flex-col gap-2">
-                              {(pilarTasks as any[]).map(task => renderTaskItem(task))}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-
-                    {((user.role === 'padrino' || user.role === 'admin') && !user.isMaster) && (
-                      <div className="mt-8 pt-8 border-t border-[#334756]">
-                        {isAddingTask ? (
-                          <form onSubmit={handleAddTask} className="flex flex-col gap-4 bg-[#2C394B] p-6 rounded-3xl border border-[#334756]">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                              <div>
-                                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 block">Pilar</label>
-                                <select 
-                                  value={newTaskPilar}
-                                  onChange={(e) => setNewTaskPilar(e.target.value)}
-                                  className="w-full bg-[#082032] border border-[#334756] text-white rounded-xl px-4 py-3 text-xs outline-none focus:border-[#FF4C29]"
-                                >
-                                  <option value="GENERAL">GENERAL</option>
-                                  <option value="SAFETY">SAFETY</option>
-                                  <option value="PEOPLE">PEOPLE</option>
-                                  <option value="GESTION">GESTION</option>
-                                  <option value="FLOTA">FLOTA</option>
-                                  <option value="REPARTO">REPARTO</option>
-                                </select>
-                              </div>
-                              <div>
-                                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 block">Descripción</label>
-                                <input 
-                                  type="text" 
-                                  value={newTaskDesc}
-                                  onChange={(e) => setNewTaskDesc(e.target.value)}
-                                  placeholder="¿Qué debe hacer?"
-                                  className="w-full bg-[#082032] border border-[#334756] text-white rounded-xl px-4 py-3 text-xs outline-none focus:border-[#FF4C29]"
-                                  autoFocus
-                                />
-                              </div>
-                            </div>
-                            <div className="flex gap-2 justify-end">
-                              <button type="button" onClick={() => setIsAddingTask(false)} className="px-6 py-3 bg-[#334756] text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-[#334756]/80 transition-all">
-                                Cancelar
-                              </button>
-                              <button type="submit" className="px-6 py-3 bg-[#FF4C29] text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-[#FF4C29]/80 transition-all">
-                                Guardar Tarea
-                              </button>
-                            </div>
-                          </form>
-                        ) : (
-                          <button 
-                            onClick={() => setIsAddingTask(true)}
-                            className="w-full py-6 border-2 border-dashed border-[#334756] rounded-[32px] text-slate-500 hover:text-[#FF4C29] hover:border-[#FF4C29]/30 transition-all flex items-center justify-center gap-3 text-xs font-black uppercase tracking-[0.2em]"
-                          >
-                            <Plus size={20} /> Agregar Nueva Tarea
-                          </button>
-                        )}
+                    {tasks.length === 0 && (
+                      <div className="text-center py-20 bg-[#2C394B]/30 rounded-[40px] border-2 border-dashed border-[#334756] flex flex-col items-center">
+                        <Clock size={48} className="text-[#334756] mb-4" />
+                        <p className="text-sm text-slate-500 font-bold uppercase tracking-widest mb-6">No hay tareas asignadas aún</p>
                       </div>
                     )}
                   </div>
@@ -1455,6 +1445,45 @@ const PeopleModule: React.FC<PeopleModuleProps> = ({ onBack }) => {
                           </button>
                         </form>
                       )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Date Selection Modal for Watermark */}
+              {taskPendingUpload && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-[#082032]/90 backdrop-blur-md">
+                  <div className="w-full max-w-md bg-[#2C394B] border border-[#334756] rounded-[40px] shadow-2xl p-8 animate-in zoom-in duration-300">
+                    <div className="w-16 h-16 bg-[#FF4C29]/10 rounded-2xl flex items-center justify-center mb-6 border border-[#FF4C29]/20 mx-auto">
+                      <Calendar size={32} className="text-[#FF4C29]" />
+                    </div>
+                    <h3 className="text-xl font-black text-white uppercase tracking-tight text-center mb-2">Fecha de Evidencia</h3>
+                    <p className="text-slate-400 text-xs font-bold uppercase tracking-widest text-center mb-8">
+                      Selecciona la fecha para la marca de agua
+                    </p>
+                    
+                    <div className="space-y-6">
+                      <input 
+                        type="date" 
+                        value={selectedEvidenceDate}
+                        onChange={(e) => setSelectedEvidenceDate(e.target.value)}
+                        className="w-full bg-[#082032] border-2 border-[#334756] text-white rounded-2xl px-6 py-4 text-center text-lg font-black uppercase tracking-widest outline-none focus:border-[#FF4C29] transition-all"
+                      />
+                      
+                      <div className="flex gap-4">
+                        <button 
+                          onClick={() => setTaskPendingUpload(null)}
+                          className="flex-1 bg-[#334756] hover:bg-[#334756]/80 text-white rounded-2xl px-6 py-4 font-black uppercase tracking-widest text-xs transition-all"
+                        >
+                          Cancelar
+                        </button>
+                        <button 
+                          onClick={() => processAndUploadEvidence(taskPendingUpload.taskId, taskPendingUpload.file, selectedEvidenceDate)}
+                          className="flex-1 bg-[#FF4C29] hover:bg-[#FF4C29]/80 text-white rounded-2xl px-6 py-4 font-black uppercase tracking-widest text-xs transition-all shadow-lg shadow-[#FF4C29]/20"
+                        >
+                          Subir Ahora
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>

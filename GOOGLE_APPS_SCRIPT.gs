@@ -265,6 +265,79 @@ function doPost(e) {
           s.appendRow([d.id, d.padrinoId, d.padrinoCode || "", d.apadrinadoId, d.apadrinadoCode || "", d.startDate || "", d.endDate || "", d.status || "Activo", (d.progress || 0) / 100]);
         }
       }
+      else if (m === 'POST_MENTORSHIP_EVIDENCE') {
+        var ssP = SpreadsheetApp.openById('1yt6Hr-RIGTca21zPwq2bn1KkbpRNvEJ6lm4VL76Q_Co');
+        var s = ssP.getSheetByName("Tareas");
+        if (!s) return output("error", "Hoja Tareas no encontrada");
+        
+        var rows = s.getDataRange().getValues();
+        var foundIdx = -1;
+        var planId = (d.planId || "").toString().trim();
+        var taskDesc = (d.taskDescription || "").toString().trim().toLowerCase();
+        var pilar = (d.pilar || "").toString().trim().toLowerCase();
+        var matriz = (d.matriz || "").toString().trim().toLowerCase();
+        var subnivel = (d.subnivel || "").toString().trim().toLowerCase();
+        
+        log("INICIO BUSQUEDA - Plan: '" + planId + "' Pilar: '" + pilar + "' Matriz: '" + matriz + "' Subnivel: '" + subnivel + "' Tarea: '" + taskDesc + "'");
+        
+        for (var i = 1; i < rows.length; i++) {
+          var rowPlanId = (rows[i][0] || "").toString().trim();
+          var rowPilar = (rows[i][2] || "").toString().trim().toLowerCase();
+          var rowMatriz = (rows[i][3] || "").toString().trim().toLowerCase();
+          var rowSubnivel = (rows[i][5] || "").toString().trim().toLowerCase();
+          var rowTaskDesc = (rows[i][6] || "").toString().trim().toLowerCase();
+          
+          // Coincidencia exacta de ID, Pilar, Matriz, Subnivel y Tarea
+          var matchPlan = (rowPlanId === planId);
+          var matchPilar = (rowPilar === pilar);
+          var matchMatriz = (rowMatriz === matriz);
+          var matchSubnivel = (rowSubnivel === subnivel);
+          var matchTask = (rowTaskDesc === taskDesc);
+
+          if (matchPlan && matchPilar && matchMatriz && matchSubnivel && matchTask) {
+            foundIdx = i + 1;
+            break;
+          }
+        }
+        
+        // Búsqueda flexible si falló la exacta
+        if (foundIdx === -1) {
+          for (var i = 1; i < rows.length; i++) {
+            var rowPlanId = (rows[i][0] || "").toString().trim();
+            var rowPilar = (rows[i][2] || "").toString().trim().toLowerCase();
+            var rowMatriz = (rows[i][3] || "").toString().trim().toLowerCase();
+            var rowSubnivel = (rows[i][5] || "").toString().trim().toLowerCase();
+            var rowTaskDesc = (rows[i][6] || "").toString().trim().toLowerCase();
+
+            var matchPlanFlex = (planId.indexOf(rowPlanId) === 0 && rowPlanId !== "");
+            var matchPilar = (rowPilar === pilar);
+            var matchMatriz = (rowMatriz === matriz);
+            var matchSubnivel = (rowSubnivel === subnivel);
+            var matchTask = (rowTaskDesc === taskDesc);
+
+            if (matchPlanFlex && matchPilar && matchMatriz && matchSubnivel && matchTask) {
+              foundIdx = i + 1;
+              break;
+            }
+          }
+        }
+        
+        var imgUrl = sImg(d.evidenceUrl, "EVIDENCIA_" + planId + "_" + (d.apadrinadoName || "USER"));
+        
+        if (foundIdx !== -1) {
+          // MONTAR EL LINK COMO FÓRMULA CLICABLE (Usamos coma para compatibilidad universal en setFormula)
+          var formula = '=HYPERLINK("' + imgUrl + '", "Ver Evidencia")';
+          s.getRange(foundIdx, 10).setValue("COMPLETADO"); // Columna J (Estado)
+          s.getRange(foundIdx, 11).setValue(1); // Columna K (Validador/1)
+          s.getRange(foundIdx, 13).setFormula(formula); // Columna M (Link Evidencia)
+          s.getRange(foundIdx, 14).setValue(d.evidenceDate || today()); // Columna N (Fecha Evidencia)
+          log("EXITO: Tarea actualizada en fila " + foundIdx);
+          return output("success", "Evidencia registrada en fila " + foundIdx);
+        } else {
+          log("ERROR: No se encontró la tarea. Plan=" + planId + " Tarea=" + taskDesc);
+          return output("error", "No se encontró la tarea en la hoja");
+        }
+      }
       else if (m === 'POST_CALIBRATION_UPDATE') {
         var s = getS(ss, "CALIBRACIONES");
         var rows = s.getDataRange().getValues();
