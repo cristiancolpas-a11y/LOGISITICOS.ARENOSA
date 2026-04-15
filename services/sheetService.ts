@@ -973,6 +973,8 @@ export const fetchCashlessFromSheet = async (): Promise<CashlessRecord[]> => {
                 fechaEjecucion: parseFlexibleDate(row[9]), // J
                 fechaProgramacion: parseFlexibleDate(row[10]), // K
                 calificacion: cleanSheetValue(row[11]), // L
+                evidenciaUrl: cleanSheetValue(row[12]), // M
+                mapUrl: cleanSheetValue(row[14]), // O
               };
             });
           resolve(records);
@@ -1164,4 +1166,8 @@ export const submitMentorshipPlanUpdateToSheet = async (data: any): Promise<bool
 };
 export const submitMentorshipTaskEvidenceToSheet = async (data: any): Promise<boolean> => { 
   return await sendToGAS({ method: 'POST_MENTORSHIP_EVIDENCE', data }, GOOGLE_SCRIPT_MENTORSHIP_URL); 
+};
+
+export const submitCashlessEvidenceToSheet = async (data: any): Promise<boolean> => {
+  return await sendToGAS({ method: 'POST_CASHLESS_EVIDENCE', data }, GOOGLE_SCRIPT_WEB_APP_URL);
 };

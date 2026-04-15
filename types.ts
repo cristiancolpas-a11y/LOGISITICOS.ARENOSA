@@ -248,6 +248,8 @@ export interface CashlessRecord {
   fechaEjecucion: string;
   fechaProgramacion: string;
   calificacion: string;
+  evidenciaUrl?: string;
+  mapUrl?: string;
 }
 
 export interface PeopleUser {

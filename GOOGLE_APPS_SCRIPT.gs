@@ -388,6 +388,37 @@ function doPost(e) {
         var s = getS(ss, "CALIBRACIONES");
         s.appendRow([d.month, d.calibrationDate, d.week, d.plate, d.taller || d.equipment, sImg(d.certificateUrl, "CALIB_" + d.plate), "COMPLETADO"]);
       }
+      else if (m === 'POST_CASHLESS_EVIDENCE') {
+        var s = getS(ss, "DETALLE");
+        var rows = s.getDataRange().getValues();
+        var foundIdx = -1;
+        var codigoCliente = (d.codigoCliente || "").toString().trim();
+        
+        for (var i = 1; i < rows.length; i++) {
+          if (rows[i][0] && rows[i][0].toString().trim() === codigoCliente) {
+            foundIdx = i + 1;
+            break;
+          }
+        }
+        
+        if (foundIdx !== -1) {
+          var imgUrl = sImg(d.evidenceUrl, "EVIDENCIA_VISITA_" + codigoCliente);
+          var formula = '=HYPERLINK("' + imgUrl + '", "Ver Evidencia")';
+          var mapFormula = d.mapUrl ? '=HYPERLINK("' + d.mapUrl + '", "Ver Mapa")' : "";
+          
+          s.getRange(foundIdx, 9).setValue(1); // Columna I (Visitas) -> Indice 8 (Columna 9)
+          s.getRange(foundIdx, 10).setValue(d.date || today()); // Columna J (Fecha Ejecución) -> Indice 9 (Columna 10)
+          if (d.calificacion) s.getRange(foundIdx, 12).setValue(d.calificacion); // Columna L (Calificación) -> Indice 11 (Columna 12)
+          s.getRange(foundIdx, 13).setFormula(formula); // Columna M (Link Evidencia) -> Indice 12 (Columna 13)
+          s.getRange(foundIdx, 14).setValue(d.date || today()); // Columna N (Fecha) -> Indice 13 (Columna 14)
+          if (mapFormula) s.getRange(foundIdx, 15).setFormula(mapFormula); // Columna O (Mapa) -> Indice 14 (Columna 15)
+          
+          log("EXITO: Evidencia de visita registrada para cliente " + codigoCliente);
+          return output("success", "Evidencia registrada correctamente.");
+        } else {
+          return output("error", "No se encontró el cliente con código " + codigoCliente);
+        }
+      }
     }
 
     lock.releaseLock();
