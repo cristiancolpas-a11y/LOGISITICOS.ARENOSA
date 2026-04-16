@@ -3,10 +3,10 @@ import Papa from 'papaparse';
 import { Vehicle, Driver, Report, MileageLog, Calibration, WashReport, Fine, Preventive, AvailabilityRecord, FleetComposition, OperationalIndicator, WorkshopRecord, SafetyRecord, StaffMember, CashlessRecord, PeopleUser, MentorshipPlan, MentorshipTask } from '../types';
 import { calculateStatus, normalizePlate, normalizeStr, getDaysDiff } from '../utils';
 
-const GOOGLE_SCRIPT_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbw9u62w53DHA54Sck1PmB6tdqzv9TK3OmKuoYU0TYwTdkZTtKnPI5Bnh4uIpnL6kUav/exec'; 
+const GOOGLE_SCRIPT_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbzqKd-TD93Z_qC-aTBD3zfrytKTBHSA5GYERQYIdVJaFIb02r33RITFlipHp43sLuhe/exec'; 
 const GOOGLE_SCRIPT_FINES_URL = 'https://script.google.com/macros/s/AKfycbxVjLry2rjYYsFLk_3PERq5KH39P73Oda3LFPKOu2uVammhZenY0I01-SeDU0tAy9uk/exec';
 const GOOGLE_SCRIPT_WORKSHOP_URL = 'https://script.google.com/macros/s/AKfycbxU8y_M1pACZaBf92uc0W01I4UqCqmOwnt7uUZSTezkSMQZgXYSLGv0laaGlR9UGJ8q/exec';
-const GOOGLE_SCRIPT_MENTORSHIP_URL = 'https://script.google.com/macros/s/AKfycbww5aRwEEOCAtWxqN1-g_Jxhn3-FsTV402lgMg8XljQJKO5lsR2UDqw0MWttKd-f6KL/exec';
+const GOOGLE_SCRIPT_MENTORSHIP_URL = 'https://script.google.com/macros/s/AKfycbzqKd-TD93Z_qC-aTBD3zfrytKTBHSA5GYERQYIdVJaFIb02r33RITFlipHp43sLuhe/exec';
 
 // HOJA MAESTRA (Donde se encuentran los Vehículos y Conductores)
 const REAL_MASTER_ID = '1GPfhWOUM8As4vVRirzWgSzFwvQ01I6EAc14uGoWc98U';
@@ -967,9 +967,9 @@ export const fetchCashlessFromSheet = async (): Promise<CashlessRecord[]> => {
                 direccion: cleanSheetValue(row[3]), // D
                 municipio: cleanSheetValue(row[4]), // E
                 freRegularDias: cleanSheetValue(row[5]), // F
-                visitas: cleanSheetValue(row[8]), // I (Status 1/0)
+                visitas: cleanSheetValue(row[8]), // I (Numeric Status 1/0)
                 nivelRiesgo: cleanSheetValue(row[7]), // H
-                validador: cleanSheetValue(row[6]), // G (Validador Name)
+                validador: cleanSheetValue(row[6]), // G (Visitas Text)
                 fechaEjecucion: parseFlexibleDate(row[9]), // J
                 fechaProgramacion: parseFlexibleDate(row[10]), // K
                 calificacion: cleanSheetValue(row[11]), // L

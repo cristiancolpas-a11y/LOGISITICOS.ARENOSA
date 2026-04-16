@@ -19,7 +19,9 @@ import {
   FileText,
   CheckCircle,
   LayoutDashboard,
-  ClipboardCheck
+  ClipboardCheck,
+  X,
+  ExternalLink
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
@@ -52,11 +54,13 @@ const VisitasPOCSModule: React.FC<VisitasPOCSModuleProps> = ({ onBack, searchTer
   const [selectedMonth, setSelectedMonth] = useState<string>('TODOS');
   const [selectedRating, setSelectedRating] = useState<string>('TODOS');
   const [executionFilter, setExecutionFilter] = useState<'ALL' | 'EXECUTED' | 'PENDING'>('ALL');
+  const [clientSearchTerm, setClientSearchTerm] = useState('');
+  const [showClientSuggestions, setShowClientSuggestions] = useState(false);
+  const [viewer, setViewer] = useState<{ type: 'image' | 'map', url: string, title: string } | null>(null);
 
   // Evidence Form State
   const [evidenceForm, setEvidenceForm] = useState({
     codigoCliente: '',
-    calificacion: '',
     evidenceUrl: '',
     mapUrl: '',
     date: new Date().toISOString().split('T')[0]
@@ -151,11 +155,11 @@ const VisitasPOCSModule: React.FC<VisitasPOCSModuleProps> = ({ onBack, searchTer
         alert('Evidencia registrada con éxito');
         setEvidenceForm({
           codigoCliente: '',
-          calificacion: '',
           evidenceUrl: '',
           mapUrl: '',
           date: new Date().toISOString().split('T')[0]
         });
+        setClientSearchTerm('');
         setSelectedClient(null);
         loadData();
         setActiveTab('dashboard');
@@ -219,6 +223,18 @@ const VisitasPOCSModule: React.FC<VisitasPOCSModuleProps> = ({ onBack, searchTer
 
   const isPending = (record: CashlessRecord) => {
     return record.visitas === '0';
+  };
+
+  const getDirectDriveUrl = (url: string) => {
+    if (!url) return '';
+    if (url.includes('drive.google.com')) {
+      const id = url.match(/[-\w]{25,}/);
+      if (id) {
+        // Use thumbnail endpoint which is more reliable for embedding in iframes
+        return `https://drive.google.com/thumbnail?id=${id[0]}&sz=w1200`;
+      }
+    }
+    return url;
   };
 
   const getFilteredData = (excludeFilter?: string) => {
@@ -762,30 +778,26 @@ const VisitasPOCSModule: React.FC<VisitasPOCSModuleProps> = ({ onBack, searchTer
                     </td>
                     <td className="px-8 py-6 text-center">
                       {record.evidenciaUrl ? (
-                        <a 
-                          href={record.evidenciaUrl} 
-                          target="_blank" 
-                          rel="noopener noreferrer"
+                        <button 
+                          onClick={() => setViewer({ type: 'image', url: record.evidenciaUrl, title: `Evidencia: ${record.cliente}` })}
                           className="inline-flex items-center gap-2 px-4 py-2 bg-rose-50 text-rose-600 rounded-xl text-[11px] font-black hover:bg-rose-100 transition-colors border border-rose-100"
                         >
                           <Camera size={14} />
                           VER
-                        </a>
+                        </button>
                       ) : (
                         <span className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">SIN SOPORTE</span>
                       )}
                     </td>
                     <td className="px-8 py-6 text-center">
                       {record.mapUrl ? (
-                        <a 
-                          href={record.mapUrl} 
-                          target="_blank" 
-                          rel="noopener noreferrer"
+                        <button 
+                          onClick={() => setViewer({ type: 'map', url: record.mapUrl, title: `Ubicación: ${record.cliente}` })}
                           className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-50 text-emerald-600 rounded-xl text-[11px] font-black hover:bg-emerald-100 transition-colors border border-emerald-100"
                         >
                           <MapPin size={14} />
                           MAPA
-                        </a>
+                        </button>
                       ) : (
                         <span className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">---</span>
                       )}
@@ -826,61 +838,99 @@ const VisitasPOCSModule: React.FC<VisitasPOCSModuleProps> = ({ onBack, searchTer
                     <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
                     <input 
                       type="text"
-                      placeholder="BUSCAR CLIENTE..."
+                      placeholder="BUSCAR CLIENTE POR NOMBRE O CÓDIGO..."
+                      autoComplete="off"
                       className="w-full bg-slate-50 border rounded-2xl pl-14 pr-6 py-4 text-[11px] font-bold uppercase outline-none focus:ring-2 focus:ring-rose-200 transition-all"
+                      value={clientSearchTerm}
+                      onFocus={() => setShowClientSuggestions(true)}
                       onChange={(e) => {
-                        const term = e.target.value.toLowerCase();
-                        if (term.length > 2) {
-                          const found = records.find(r => 
-                            r.cliente.toLowerCase().includes(term) || 
-                            r.codigoCliente.toLowerCase().includes(term)
-                          );
-                          if (found) {
-                            setSelectedClient(found);
-                            setEvidenceForm(prev => ({ ...prev, codigoCliente: found.codigoCliente }));
-                          }
+                        setClientSearchTerm(e.target.value);
+                        setShowClientSuggestions(true);
+                        if (selectedClient) {
+                          setSelectedClient(null);
+                          setEvidenceForm(prev => ({ ...prev, codigoCliente: '' }));
                         }
                       }}
                     />
+                    
+                    {/* Suggestions Dropdown */}
+                    <AnimatePresence>
+                      {showClientSuggestions && clientSearchTerm.length > 2 && !selectedClient && (
+                        <motion.div 
+                          initial={{ opacity: 0, y: -10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: -10 }}
+                          className="absolute z-50 left-0 right-0 mt-2 bg-white border rounded-2xl shadow-xl max-h-60 overflow-y-auto custom-scrollbar"
+                        >
+                          {records
+                            .filter(r => 
+                              r.cliente.toLowerCase().includes(clientSearchTerm.toLowerCase()) || 
+                              r.codigoCliente.toLowerCase().includes(clientSearchTerm.toLowerCase())
+                            )
+                            .slice(0, 10)
+                            .map((r) => (
+                              <button
+                                key={r.id}
+                                type="button"
+                                className="w-full text-left p-4 hover:bg-rose-50 border-b last:border-0 transition-colors"
+                                onClick={() => {
+                                  setSelectedClient(r);
+                                  setEvidenceForm(prev => ({ ...prev, codigoCliente: r.codigoCliente }));
+                                  setClientSearchTerm(r.cliente);
+                                  setShowClientSuggestions(false);
+                                }}
+                              >
+                                <div className="text-[11px] font-black text-slate-800 uppercase">{r.cliente}</div>
+                                <div className="text-[9px] text-slate-400 font-bold mt-1">CÓDIGO: {r.codigoCliente} | {r.municipio}</div>
+                              </button>
+                            ))
+                          }
+                          {records.filter(r => 
+                              r.cliente.toLowerCase().includes(clientSearchTerm.toLowerCase()) || 
+                              r.codigoCliente.toLowerCase().includes(clientSearchTerm.toLowerCase())
+                            ).length === 0 && (
+                            <div className="p-4 text-[10px] text-slate-400 font-bold uppercase text-center">No se encontraron resultados</div>
+                          )}
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
                   </div>
+                  
                   {selectedClient && (
                     <motion.div 
                       initial={{ opacity: 0, x: -10 }}
                       animate={{ opacity: 1, x: 0 }}
-                      className="p-6 bg-rose-50 rounded-2xl border border-rose-100"
+                      className="p-6 bg-rose-50 rounded-2xl border border-rose-100 flex items-center justify-between"
                     >
-                      <div className="text-sm font-black text-rose-900 uppercase">{selectedClient.cliente}</div>
-                      <div className="text-[10px] text-rose-600 font-bold mt-1 uppercase">CÓDIGO: {selectedClient.codigoCliente}</div>
-                      <div className="text-[10px] text-rose-500 mt-2 uppercase">{selectedClient.direccion}</div>
+                      <div>
+                        <div className="text-sm font-black text-rose-900 uppercase">{selectedClient.cliente}</div>
+                        <div className="text-[10px] text-rose-600 font-bold mt-1 uppercase">CÓDIGO: {selectedClient.codigoCliente}</div>
+                        <div className="text-[10px] text-rose-500 mt-2 uppercase">{selectedClient.direccion}</div>
+                      </div>
+                      <button 
+                        type="button"
+                        onClick={() => {
+                          setSelectedClient(null);
+                          setClientSearchTerm('');
+                          setEvidenceForm(prev => ({ ...prev, codigoCliente: '' }));
+                        }}
+                        className="p-2 text-rose-400 hover:text-rose-600 transition-colors"
+                      >
+                        <RefreshCw size={20} />
+                      </button>
                     </motion.div>
                   )}
                 </div>
 
-                {/* Date & Rating */}
-                <div className="space-y-8">
-                  <div className="space-y-4">
-                    <label className="text-[11px] font-black text-slate-500 uppercase tracking-widest ml-1">Fecha de Visita</label>
-                    <input 
-                      type="date"
-                      value={evidenceForm.date}
-                      onChange={(e) => setEvidenceForm(prev => ({ ...prev, date: e.target.value }))}
-                      className="w-full bg-slate-50 border rounded-2xl px-6 py-4 text-[11px] font-bold uppercase outline-none focus:ring-2 focus:ring-rose-200 transition-all"
-                    />
-                  </div>
-                  <div className="space-y-4">
-                    <label className="text-[11px] font-black text-slate-500 uppercase tracking-widest ml-1">Calificación</label>
-                    <select 
-                      value={evidenceForm.calificacion}
-                      onChange={(e) => setEvidenceForm(prev => ({ ...prev, calificacion: e.target.value }))}
-                      className="w-full bg-slate-50 border rounded-2xl px-6 py-4 text-[11px] font-bold uppercase outline-none focus:ring-2 focus:ring-rose-200 transition-all appearance-none cursor-pointer"
-                    >
-                      <option value="">SELECCIONAR...</option>
-                      <option value="EXCELENTE">EXCELENTE</option>
-                      <option value="BUENO">BUENO</option>
-                      <option value="REGULAR">REGULAR</option>
-                      <option value="MALO">MALO</option>
-                    </select>
-                  </div>
+                {/* Date Selection */}
+                <div className="space-y-4">
+                  <label className="text-[11px] font-black text-slate-500 uppercase tracking-widest ml-1">Fecha de Visita</label>
+                  <input 
+                    type="date"
+                    value={evidenceForm.date}
+                    onChange={(e) => setEvidenceForm(prev => ({ ...prev, date: e.target.value }))}
+                    className="w-full bg-slate-50 border rounded-2xl px-6 py-4 text-[11px] font-bold uppercase outline-none focus:ring-2 focus:ring-rose-200 transition-all"
+                  />
                 </div>
               </div>
 
@@ -974,6 +1024,80 @@ const VisitasPOCSModule: React.FC<VisitasPOCSModuleProps> = ({ onBack, searchTer
           </div>
         </motion.div>
       )}
+
+      {/* VIEWER MODAL */}
+      <AnimatePresence>
+        {viewer && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 md:p-8">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setViewer(null)}
+              className="absolute inset-0 bg-slate-900/90 backdrop-blur-sm"
+            />
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="relative w-full max-w-5xl bg-white rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
+            >
+              <div className="p-6 md:p-8 flex items-center justify-between border-b bg-slate-50">
+                <div>
+                  <h3 className="text-lg md:text-xl font-black text-slate-800 uppercase tracking-tight">{viewer.title}</h3>
+                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Visualización de {viewer.type === 'image' ? 'evidencia fotográfica' : 'ubicación geoespacial'}</p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <a 
+                    href={viewer.url} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="p-3 bg-white text-slate-600 rounded-2xl hover:bg-slate-100 transition-all border shadow-sm"
+                    title="Oír en nueva pestaña"
+                  >
+                    <ExternalLink size={20} />
+                  </a>
+                  <button 
+                    onClick={() => setViewer(null)}
+                    className="p-3 bg-rose-500 text-white rounded-2xl hover:bg-rose-600 transition-all shadow-lg shadow-rose-200"
+                  >
+                    <X size={20} />
+                  </button>
+                </div>
+              </div>
+
+                <div className="flex-1 overflow-auto bg-slate-200 p-4 md:p-8 flex items-center justify-center min-h-[400px]">
+                {viewer.type === 'image' ? (
+                  <div className="relative w-full h-full flex items-center justify-center">
+                    <img 
+                      src={getDirectDriveUrl(viewer.url)} 
+                      alt={viewer.title} 
+                      className="max-w-full max-h-full object-contain rounded-2xl shadow-2xl"
+                      onError={(e) => {
+                        // Fallback to direct share link if thumbnail fails
+                        const target = e.target as HTMLImageElement;
+                        if (!target.src.includes('uc?export=view')) {
+                          const id = viewer.url.match(/[-\w]{25,}/);
+                          if (id) target.src = `https://docs.google.com/uc?export=view&id=${id[0]}`;
+                        }
+                      }}
+                    />
+                  </div>
+                ) : (
+                  <iframe 
+                    src={viewer.url.includes('google.com/maps') 
+                      ? `${viewer.url}${viewer.url.includes('?') ? '&' : '?'}output=embed` 
+                      : viewer.url.startsWith('http') ? viewer.url : `https://www.google.com/maps?q=${viewer.url}&output=embed`}
+                    className="w-full h-full min-h-[500px] border-0 rounded-2xl shadow-2xl bg-white"
+                    title="Mapa"
+                    allowFullScreen
+                  />
+                )}
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

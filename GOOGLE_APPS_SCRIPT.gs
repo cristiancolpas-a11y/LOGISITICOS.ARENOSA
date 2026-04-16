@@ -402,18 +402,23 @@ function doPost(e) {
         }
         
         if (foundIdx !== -1) {
-          var imgUrl = sImg(d.evidenceUrl, "EVIDENCIA_VISITA_" + codigoCliente);
-          var formula = '=HYPERLINK("' + imgUrl + '", "Ver Evidencia")';
-          var mapFormula = d.mapUrl ? '=HYPERLINK("' + d.mapUrl + '", "Ver Mapa")' : "";
+          var imgUrl = sImg(d.evidenceUrl, "EVID_CASH_" + codigoCliente);
           
-          s.getRange(foundIdx, 9).setValue(1); // Columna I (Visitas) -> Indice 8 (Columna 9)
-          s.getRange(foundIdx, 10).setValue(d.date || today()); // Columna J (Fecha Ejecución) -> Indice 9 (Columna 10)
-          if (d.calificacion) s.getRange(foundIdx, 12).setValue(d.calificacion); // Columna L (Calificación) -> Indice 11 (Columna 12)
-          s.getRange(foundIdx, 13).setFormula(formula); // Columna M (Link Evidencia) -> Indice 12 (Columna 13)
-          s.getRange(foundIdx, 14).setValue(d.date || today()); // Columna N (Fecha) -> Indice 13 (Columna 14)
-          if (mapFormula) s.getRange(foundIdx, 15).setFormula(mapFormula); // Columna O (Mapa) -> Indice 14 (Columna 15)
+          // 1. MARCAR VISITA (Basado en los encabezados reales de la hoja)
+          s.getRange(foundIdx, 7).setValue("VISITADO"); // Col G: Visitas (Texto)
+          s.getRange(foundIdx, 9).setValue(1);          // Col I: VALIDADO (Status 1)
+          s.getRange(foundIdx, 10).setValue(d.date || today()); // Col J: Fecha Ejecución
           
-          log("EXITO: Evidencia de visita registrada para cliente " + codigoCliente);
+          // 2. GUARDAR LINKS REALES (Columnas M y O)
+          s.getRange(foundIdx, 13).setValue(imgUrl);         // Col M: Link Evidencia
+          s.getRange(foundIdx, 14).setValue(d.date || today()); // Col N: Fecha Registro
+          s.getRange(foundIdx, 15).setValue(d.mapUrl || ""); // Col O: Link Mapa (Coordenadas)
+          
+          // 3. BOTONES AUXILIARES (P y Q)
+          s.getRange(foundIdx, 16).setFormula('=HYPERLINK("' + imgUrl + '", "VER FOTO")'); 
+          if (d.mapUrl) s.getRange(foundIdx, 17).setFormula('=HYPERLINK("' + d.mapUrl + '", "VER MAPA")');
+          
+          log("EXITO: Visita POCS registrada para " + codigoCliente);
           return output("success", "Evidencia registrada correctamente.");
         } else {
           return output("error", "No se encontró el cliente con código " + codigoCliente);
