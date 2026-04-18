@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { motion } from 'motion/react';
 import { 
   Users, ChevronLeft, LogIn, Search, Plus, MessageSquare, 
   CheckCircle2, Clock, Calendar, Send, Paperclip, Activity,
   ChevronRight, Circle, Bell, Camera, Image as ImageIcon, Upload,
-  AlertCircle, FileText, Trash2, ChevronDown, Layout, RefreshCw
+  AlertCircle, FileText, Trash2, ChevronDown, Layout, RefreshCw,
+  User as UserIcon, Heart
 } from 'lucide-react';
 import { auth, db } from '../firebase';
 import { signInAnonymously } from 'firebase/auth';
@@ -873,60 +875,60 @@ const PeopleModule: React.FC<PeopleModuleProps> = ({ onBack }) => {
 
   if (activeSection === 'menu') {
     return (
-      <div className="flex flex-col h-full w-full max-w-4xl mx-auto p-4 md:p-8 bg-[#082032]">
-        <div className="flex items-center justify-between mb-8 md:mb-12">
-          <div className="flex items-center gap-4 md:gap-6">
-            <div className="w-16 h-16 md:w-20 md:h-20 bg-[#2C394B] rounded-2xl md:rounded-3xl flex items-center justify-center shadow-xl border border-[#334756] overflow-hidden p-2 relative">
-              <img 
-                src="https://lh3.googleusercontent.com/d/1RpVUh4KZ0s0tBpPynwFuwjiVqT0ddSDM" 
-                alt="People Logo" 
-                className="w-full h-full object-contain relative z-10"
-              />
+      <div className="flex flex-col h-full w-full space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-700">
+        {/* Existing Content */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-6">
+            <div className="w-20 h-20 bg-orange-500/10 rounded-[2rem] flex items-center justify-center text-orange-600 shadow-inner">
+              <Users size={36} />
             </div>
             <div>
-              <h1 className="text-2xl md:text-4xl font-black text-white uppercase tracking-tight">People</h1>
-              <p className="text-slate-400 font-bold uppercase tracking-widest text-[10px] md:text-xs mt-1">Gestión de Talento Humano</p>
+              <h1 className="text-3xl font-black text-slate-900 uppercase tracking-tight">People</h1>
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">Gestión y Mentoría de Personal</p>
             </div>
           </div>
           <button 
             onClick={onBack}
-            className="p-2 md:p-3 hover:bg-[#2C394B] rounded-xl md:rounded-2xl transition-colors text-slate-400"
+            className="p-4 hover:bg-slate-100 rounded-2xl transition-all border border-slate-200 text-slate-400 hover:text-slate-600 shadow-sm"
           >
             <ChevronLeft size={24} />
           </button>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+          {/* PLAN PADRINO BUTTON */}
           <button 
             onClick={() => setActiveSection('plan-padrino')}
-            className="group relative bg-[#082032] border-2 border-[#334756] rounded-[30px] md:rounded-[40px] p-6 md:p-8 text-left hover:border-[#FF4C29] hover:shadow-2xl hover:shadow-[#FF4C29]/10 transition-all duration-500 overflow-hidden"
+            className="group relative bg-[#0a1121] hover:bg-white/[0.03] border-2 border-orange-500/40 p-10 rounded-[3rem] transition-all flex flex-col items-start gap-8 text-left active:scale-[0.98] shadow-3xl shadow-black/80 overflow-hidden h-full"
           >
-            <div className="absolute top-0 right-0 w-32 h-32 bg-[#FF4C29]/5 rounded-full -mr-16 -mt-16 group-hover:scale-150 transition-transform duration-700" />
+            <div className="absolute top-0 right-0 w-32 h-32 bg-orange-500/15 rounded-full blur-2xl -mr-16 -mt-16 group-hover:scale-150 transition-transform duration-1000"></div>
             
-            <div className="w-12 h-12 md:w-16 md:h-16 bg-[#2C394B] rounded-xl md:rounded-2xl flex items-center justify-center mb-4 md:mb-6 shadow-sm border border-[#334756] overflow-hidden group-hover:scale-110 transition-transform duration-500 p-2 relative">
+            <div className="w-16 h-16 bg-white/5 border border-white/10 rounded-2xl flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform shadow-2xl relative z-10 overflow-hidden p-3">
               <img 
                 src="https://lh3.googleusercontent.com/d/1RpVUh4KZ0s0tBpPynwFuwjiVqT0ddSDM" 
                 alt="People Logo" 
-                className="w-full h-full object-contain relative z-10"
+                className="w-full h-full object-contain filter drop-shadow-[0_0_8px_rgba(255,76,41,0.5)]"
               />
             </div>
             
-            <h3 className="text-xl md:text-2xl font-black text-white uppercase tracking-tight mb-2">Plan Padrino</h3>
-            <p className="text-slate-400 text-xs md:text-sm font-medium leading-relaxed">
-              Programa de mentoría y acompañamiento para el desarrollo profesional de nuestros colaboradores.
-            </p>
+            <div className="relative z-10">
+              <h3 className="text-2xl font-black text-white uppercase tracking-tight leading-none mb-4">Plan Padrino</h3>
+              <p className="text-xs font-medium text-slate-400 leading-relaxed text-pretty">
+                Programa estratégico de mentoría y acompañamiento para el desarrollo acelerado de nuestros colaboradores.
+              </p>
+            </div>
             
-            <div className="mt-6 md:mt-8 flex items-center gap-2 text-[#FF4C29] font-black uppercase tracking-widest text-[10px]">
-              Ingresar ahora <ChevronRight size={14} />
+            <div className="mt-auto text-[10px] font-black uppercase tracking-[0.3em] text-orange-500 flex items-center gap-2 group-hover:translate-x-2 transition-transform relative z-10 pt-4">
+              Ingresar Ahora <ChevronRight size={14} />
             </div>
           </button>
 
-          <div className="bg-[#2C394B]/30 border-2 border-dashed border-[#334756] rounded-[30px] md:rounded-[40px] p-6 md:p-8 flex flex-col items-center justify-center text-center opacity-60">
-            <div className="w-12 h-12 md:w-16 md:h-16 bg-[#2C394B] rounded-2xl md:rounded-3xl flex items-center justify-center text-slate-500 mb-4 md:mb-6 border border-[#334756]">
-              <Activity size={24} md:size={32} />
+          <div className="bg-white border-2 border-dashed border-slate-200 rounded-[3rem] p-10 flex flex-col items-center justify-center text-center opacity-60 hover:opacity-100 transition-opacity">
+            <div className="w-16 h-16 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-300 mb-6 border border-slate-100">
+              <Activity size={32} />
             </div>
-            <h3 className="text-lg md:text-xl font-black text-slate-500 uppercase tracking-tight mb-2">Próximamente</h3>
-            <p className="text-slate-600 text-[10px] font-bold uppercase tracking-widest">Nuevos módulos de gestión</p>
+            <h3 className="text-lg font-black text-slate-400 uppercase tracking-tight mb-2">Próximamente</h3>
+            <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest leading-relaxed">Nuevos módulos de gestión de talento<br/>en desarrollo</p>
           </div>
         </div>
       </div>

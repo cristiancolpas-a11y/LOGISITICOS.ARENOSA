@@ -276,6 +276,25 @@ export interface MentorshipPlan {
   planIdBase?: string; // Relación con ID_Base de Tareas
 }
 
+export interface MedicalRecord {
+  id: string;
+  name: string;             // Columna A (0)
+  joiningDate: string;      // Columna B (1)
+  month: string;            // Columna C (2)
+  lastExamDate: string;     // Columna D (3)
+  expiryDate: string;       // Columna E (4)
+  daysRemaining: string;    // Columna F (5)
+  rawStatus: string;        // Columna G (6)
+  status: 'VIGENTE' | 'POR VENCER' | 'VENCIDO'; // Logic based status
+  observations: string;
+  contractor: string;
+  position: string;      // Columna I (8)
+  area: string;          // Columna J (9)
+  examType: string;      // Columna K (10)
+  weightRec: string;     // Columna X (23)
+  laboralRec: string;    // Columna AC (28)
+}
+
 export interface MentorshipTask {
   id: string;
   idBase: string;

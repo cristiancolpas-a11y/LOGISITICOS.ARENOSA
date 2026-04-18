@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import * as XLSX from 'xlsx';
 import { CashlessRecord } from '../types';
 import { fetchCashlessFromSheet, submitCashlessEvidenceToSheet } from '../services/sheetService';
 import { 
@@ -20,10 +21,14 @@ import {
   CheckCircle,
   LayoutDashboard,
   ClipboardCheck,
+  CreditCard,
+  ChevronDown,
+  Map,
+  BarChart as BarChartIcon,
   X,
   ExternalLink
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from 'motion/react';
 import { 
   BarChart, 
   Bar, 
@@ -134,7 +139,7 @@ const VisitasPOCSModule: React.FC<VisitasPOCSModuleProps> = ({ onBack, searchTer
         ctx.textBaseline = 'middle';
         ctx.fillText(text, padding, canvas.height - barHeight / 2);
 
-        resolve(canvas.toDataURL('image/jpeg', 0.85));
+        resolve(canvas.toDataURL('image/jpeg', 0.95));
       };
       img.onerror = () => resolve(dataUrl);
       img.src = dataUrl;
@@ -299,6 +304,43 @@ const VisitasPOCSModule: React.FC<VisitasPOCSModuleProps> = ({ onBack, searchTer
 
   const filteredRecords = baseFilteredRecords;
 
+  const handleExportToExcel = () => {
+    const dataToExport = filteredRecords.map(record => ({
+      'CÓDIGO CLIENTE': record.codigoCliente,
+      'CLIENTE': record.cliente,
+      'BARRIO': record.barrio,
+      'DIRECCIÓN': record.direccion,
+      'MUNICIPIO': record.municipio,
+      'FRECUENCIA': record.freRegularDias,
+      'VISITADO': record.visitas === '1' ? 'SÍ' : 'NO',
+      'RIESGO': record.nivelRiesgo,
+      'ESTADO': record.validador,
+      'FECHA EJECUCIÓN': record.fechaEjecucion,
+      'FECHA PROGRAMACIÓN': record.fechaProgramacion,
+      'CALIFICACIÓN': record.calificacion,
+      'EVIDENCIA URL': record.evidenciaUrl,
+      'MAPA URL': record.mapUrl
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(dataToExport);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Visitas POCS');
+    
+    if (dataToExport.length > 0) {
+      const maxWidths = Object.keys(dataToExport[0]).map(key => {
+        const headerLen = key.length;
+        const maxDataLen = dataToExport.reduce((max, row) => {
+          const val = row[key as keyof typeof row];
+          return Math.max(max, val ? String(val).length : 0);
+        }, 0);
+        return { wch: Math.max(headerLen, maxDataLen) + 2 };
+      });
+      worksheet['!cols'] = maxWidths;
+    }
+
+    XLSX.writeFile(workbook, `Visitas_POCS_${new Date().toISOString().split('T')[0]}.xlsx`);
+  };
+
   // Data for Rating Chart - Ignore rating filter to allow selection
   const ratingRecords = getFilteredData('rating');
   const ratingCounts = ratingRecords
@@ -353,55 +395,46 @@ const VisitasPOCSModule: React.FC<VisitasPOCSModuleProps> = ({ onBack, searchTer
   };
 
   return (
-    <div className="flex flex-col space-y-8 pb-12">
+    <div className="space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-700">
       {/* HEADER & ACTIONS */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 bg-white p-4 md:p-6 rounded-3xl border shadow-sm">
-        <div className="flex items-center gap-4">
-          <button 
-            onClick={onBack}
-            className="p-2 md:p-3 hover:bg-slate-50 rounded-2xl transition-all border border-transparent hover:border-slate-200 group"
-          >
-            <ChevronLeft size={24} className="text-slate-400 group-hover:text-slate-600" />
-          </button>
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-8 bg-white p-8 rounded-[3rem] border border-slate-200 shadow-xl shadow-slate-200/50">
+        <div className="flex items-center gap-6">
+          <div className="w-20 h-20 bg-blue-500/10 rounded-[2rem] flex items-center justify-center text-blue-600 shadow-inner">
+            <ClipboardCheck size={36} />
+          </div>
           <div>
-            <h2 className="text-xl md:text-2xl lg:text-3xl font-black text-slate-800 uppercase tracking-tight">Visitas POCS</h2>
-            <p className="text-[9px] md:text-xs text-slate-400 font-bold uppercase tracking-[0.2em]">Gestión de Visitas y Evidencias</p>
+            <h2 className="text-3xl font-black text-slate-900 uppercase tracking-tight">Visitas POCS</h2>
+            <div className="flex gap-4 mt-2">
+              <button
+                onClick={() => setActiveTab('dashboard')}
+                className={`text-[10px] font-black uppercase tracking-widest transition-all ${
+                  activeTab === 'dashboard' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-400 hover:text-slate-600'
+                }`}
+              >
+                Dashboard
+              </button>
+              <button
+                onClick={() => setActiveTab('evidence')}
+                className={`text-[10px] font-black uppercase tracking-widest transition-all ${
+                  activeTab === 'evidence' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-400 hover:text-slate-600'
+                }`}
+              >
+                Cargar Evidencia
+              </button>
+            </div>
           </div>
         </div>
         
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 bg-slate-50 p-1.5 rounded-2xl border shadow-inner">
-          <button
-            onClick={() => setActiveTab('dashboard')}
-            className={`flex items-center justify-center gap-2 px-4 md:px-6 py-2.5 rounded-xl text-[10px] md:text-[11px] font-black uppercase tracking-widest transition-all ${
-              activeTab === 'dashboard' 
-                ? 'bg-slate-800 text-white shadow-lg shadow-slate-200' 
-                : 'text-slate-400 hover:text-slate-600 hover:bg-white'
-            }`}
+        <div className="flex flex-wrap items-center gap-4">
+          <button 
+            onClick={loadData}
+            disabled={isLoading}
+            className="flex items-center gap-3 bg-white px-8 py-4 rounded-[1.5rem] border border-slate-200 shadow-lg hover:shadow-xl transition-all group disabled:opacity-50 active:scale-95"
           >
-            <LayoutDashboard size={16} />
-            Dashboard
-          </button>
-          <button
-            onClick={() => setActiveTab('evidence')}
-            className={`flex items-center justify-center gap-2 px-4 md:px-6 py-2.5 rounded-xl text-[10px] md:text-[11px] font-black uppercase tracking-widest transition-all ${
-              activeTab === 'evidence' 
-                ? 'bg-rose-600 text-white shadow-lg shadow-rose-200' 
-                : 'text-slate-400 hover:text-rose-600 hover:bg-white'
-            }`}
-          >
-            <ClipboardCheck size={16} />
-            Registro
+            <RefreshCw size={18} className={`text-slate-400 group-hover:text-blue-600 transition-colors ${isLoading ? 'animate-spin' : 'group-hover:rotate-180 transition-transform duration-700'}`} />
+            <span className="text-[10px] font-black text-slate-600 uppercase tracking-widest">Sincronizar</span>
           </button>
         </div>
-
-        <button 
-          onClick={loadData}
-          disabled={isLoading}
-          className="flex items-center justify-center gap-3 bg-white px-6 py-3.5 rounded-2xl border shadow-sm hover:shadow-md transition-all group disabled:opacity-50"
-        >
-          <RefreshCw size={18} className={`text-slate-400 group-hover:text-blue-500 transition-colors ${isLoading ? 'animate-spin' : ''}`} />
-          <span className="text-[10px] md:text-[11px] font-black text-slate-600 uppercase tracking-widest">Sincronizar</span>
-        </button>
       </div>
 
       {activeTab === 'dashboard' ? (
@@ -697,8 +730,18 @@ const VisitasPOCSModule: React.FC<VisitasPOCSModuleProps> = ({ onBack, searchTer
             <h3 className="text-base md:text-lg font-black text-slate-800 uppercase tracking-tight">Detalle</h3>
             <p className="text-[9px] md:text-[10px] text-slate-400 font-bold uppercase tracking-widest">Registros</p>
           </div>
-          <div className="text-[9px] md:text-[10px] font-black text-slate-500 bg-white px-3 md:px-4 py-1.5 md:py-2 rounded-full border shadow-sm uppercase tracking-widest">
-            {filteredRecords.length} Resultados
+          <div className="flex items-center gap-3">
+            <button 
+              onClick={handleExportToExcel}
+              disabled={isLoading || filteredRecords.length === 0}
+              className="group flex items-center gap-2 bg-emerald-50 hover:bg-emerald-100 disabled:opacity-50 disabled:cursor-not-allowed text-emerald-600 px-4 py-2 rounded-xl border border-emerald-100 transition-all text-[10px] font-black uppercase tracking-widest shadow-sm"
+            >
+              <Download size={14} className="group-hover:scale-110 transition-transform" />
+              <span>Exportar Excel</span>
+            </button>
+            <div className="text-[9px] md:text-[10px] font-black text-slate-500 bg-white px-3 md:px-4 py-1.5 md:py-2 rounded-full border shadow-sm uppercase tracking-widest">
+              {filteredRecords.length} Resultados
+            </div>
           </div>
         </div>
         <div className="overflow-x-auto custom-scrollbar">

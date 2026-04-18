@@ -1,6 +1,6 @@
 
 import Papa from 'papaparse';
-import { Vehicle, Driver, Report, MileageLog, Calibration, WashReport, Fine, Preventive, AvailabilityRecord, FleetComposition, OperationalIndicator, WorkshopRecord, SafetyRecord, StaffMember, CashlessRecord, PeopleUser, MentorshipPlan, MentorshipTask } from '../types';
+import { Vehicle, Driver, Report, MileageLog, Calibration, WashReport, Fine, Preventive, AvailabilityRecord, FleetComposition, OperationalIndicator, WorkshopRecord, SafetyRecord, StaffMember, CashlessRecord, PeopleUser, MentorshipPlan, MentorshipTask, MedicalRecord } from '../types';
 import { calculateStatus, normalizePlate, normalizeStr, getDaysDiff } from '../utils';
 
 const GOOGLE_SCRIPT_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbzqKd-TD93Z_qC-aTBD3zfrytKTBHSA5GYERQYIdVJaFIb02r33RITFlipHp43sLuhe/exec'; 
@@ -27,6 +27,9 @@ const BASE_URL_CASHLESS = `https://docs.google.com/spreadsheets/d/${CASHLESS_DOC
 // HOJA PLAN PADRINO
 const PLAN_PADRINO_DOC_ID = '1yt6Hr-RIGTca21zPwq2bn1KkbpRNvEJ6lm4VL76Q_Co';
 const BASE_URL_PLAN_PADRINO = `https://docs.google.com/spreadsheets/d/${PLAN_PADRINO_DOC_ID}/gviz/tq?tqx=out:csv`;
+
+// HOJA EXAMENES MEDICOS
+const EXAMS_DOC_ID = '1It_eNErYmxT3GnL9487FtsZwcrViH7r88o0USi-IpAE';
 
 const getCacheBuster = () => `&t=${new Date().getTime()}`;
 
@@ -784,6 +787,78 @@ export const fetchWorkshopRecordsFromSheet = async (): Promise<WorkshopRecord[]>
       });
     });
   } catch (e) { return []; }
+};
+
+export const fetchMedicalExamsFromSheet = async (): Promise<MedicalRecord[]> => {
+  try {
+    const spreadsheetId = EXAMS_DOC_ID;
+    const sheetName = 'DATA';
+    const url = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(sheetName)}${getCacheBuster()}`;
+    
+    const response = await fetch(url);
+    const csvText = await response.text();
+    if (!csvText || csvText.includes("<!DOCTYPE html")) return [];
+
+    return new Promise((resolve) => {
+      Papa.parse(csvText, {
+        header: false,
+        skipEmptyLines: 'greedy',
+        complete: (results) => {
+          const rows = results.data as any[][];
+          if (!rows || rows.length < 2) { resolve([]); return; }
+          
+          // Filter out rows where the first column is empty or contains header text
+          const dataRows = rows.slice(1).filter(row => row && row[0] && normalizeStr(row[0]) !== 'COLABORADOR');
+
+          const records = dataRows.map((row, i): MedicalRecord => {
+            const name = cleanSheetValue(row[0]);        // 0
+            const joiningDate = cleanSheetValue(row[1]); // 1
+            const month = cleanSheetValue(row[2]);       // 2
+            const lastExam = parseFlexibleDate(row[3]);  // 3
+            const expiry = parseFlexibleDate(row[4]);    // 4
+            const daysRemaining = cleanSheetValue(row[5]); // 5
+            const rawStatus = cleanSheetValue(row[6]);   // 6
+            
+            // Other columns
+            const position = cleanSheetValue(row[8]); // I
+            const area = cleanSheetValue(row[9]);     // J
+            const examType = cleanSheetValue(row[10]); // K
+            const weightRec = cleanSheetValue(row[23]); // X
+            const laboralRec = cleanSheetValue(row[28]); // AC
+            
+            const docStatus = calculateStatus(expiry);
+            let status: MedicalRecord['status'] = 'VIGENTE';
+            if (docStatus === 'expired') status = 'VENCIDO';
+            else if (docStatus === 'warning' || docStatus === 'critical') status = 'POR VENCER';
+
+            return {
+              id: `med-${name}-${i}`,
+              name,
+              joiningDate,
+              month,
+              lastExamDate: lastExam,
+              expiryDate: expiry,
+              daysRemaining,
+              rawStatus,
+              status,
+              observations: '', // No longer using previous obs index if mapping changed
+              contractor: '',   // No longer using previous contractor index
+              position,
+              area,
+              examType,
+              weightRec,
+              laboralRec
+            };
+          });
+          resolve(records);
+        },
+        error: () => resolve([])
+      });
+    });
+  } catch (e) {
+    console.error('Error in fetchMedicalExamsFromSheet:', e);
+    return [];
+  }
 };
 
 export const fetchSafetyReportsFromSheet = async (): Promise<SafetyRecord[]> => {
