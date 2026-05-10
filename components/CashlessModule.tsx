@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import * as XLSX from 'xlsx';
 import { CashlessRecord } from '../types';
-import { fetchCashlessFromSheet, submitCashlessEvidenceToSheet } from '../services/sheetService';
+import { fetchCashlessFromSheet, submitCashlessEvidenceToSheet, submitCashlessUpdateToSheet } from '../services/sheetService';
 import { 
   Search, 
   Filter, 
   Download, 
   RefreshCw, 
   ChevronLeft, 
+  ChevronRight,
   Calendar, 
   User, 
   MapPin, 
@@ -26,7 +27,9 @@ import {
   Map,
   BarChart as BarChartIcon,
   X,
-  ExternalLink
+  ExternalLink,
+  Edit3,
+  Save
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -52,6 +55,7 @@ const VisitasPOCSModule: React.FC<VisitasPOCSModuleProps> = ({ onBack, searchTer
   const [activeTab, setActiveTab] = useState<'dashboard' | 'evidence'>('dashboard');
   const [records, setRecords] = useState<CashlessRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedRisk, setSelectedRisk] = useState<string>('TODOS');
@@ -71,10 +75,53 @@ const VisitasPOCSModule: React.FC<VisitasPOCSModuleProps> = ({ onBack, searchTer
     date: new Date().toISOString().split('T')[0]
   });
   const [selectedClient, setSelectedClient] = useState<CashlessRecord | null>(null);
+  const [editingRecord, setEditingRecord] = useState<CashlessRecord | null>(null);
+  const [editForm, setEditForm] = useState({ observaciones: '', planAccion: '' });
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
 
   useEffect(() => {
     loadData();
   }, []);
+
+  const handleEditClick = (record: CashlessRecord) => {
+    setEditingRecord(record);
+    setEditForm({ 
+      observaciones: record.observaciones || '', 
+      planAccion: record.planAccion || '' 
+    });
+  };
+
+  const handleSubmitUpdate = async () => {
+    if (!editingRecord) return;
+    setIsUpdating(true);
+    try {
+      await submitCashlessUpdateToSheet({
+        codigoCliente: editingRecord.codigoCliente,
+        observaciones: editForm.observaciones,
+        planAccion: editForm.planAccion
+      });
+      
+      // Update local state first for immediate feedback
+      setRecords(prev => prev.map(r => 
+        r.codigoCliente === editingRecord.codigoCliente 
+          ? { ...r, observaciones: editForm.observaciones, planAccion: editForm.planAccion } 
+          : r
+      ));
+      setEditingRecord(null);
+      
+      // Small delay before full reload to allow sheet processing
+      setTimeout(() => {
+        loadData();
+      }, 2000);
+    } catch (error) {
+      console.error("Error updating cashless record:", error);
+      alert("Error al actualizar el registro");
+    } finally {
+      setIsUpdating(false);
+    }
+  };
 
   useEffect(() => {
     setSearchTerm(externalSearchTerm);
@@ -85,6 +132,7 @@ const VisitasPOCSModule: React.FC<VisitasPOCSModuleProps> = ({ onBack, searchTer
     try {
       const data = await fetchCashlessFromSheet();
       setRecords(data);
+      setLastUpdated(new Date());
     } catch (error) {
       console.error('Error loading cashless data:', error);
     } finally {
@@ -166,8 +214,12 @@ const VisitasPOCSModule: React.FC<VisitasPOCSModuleProps> = ({ onBack, searchTer
         });
         setClientSearchTerm('');
         setSelectedClient(null);
-        loadData();
         setActiveTab('dashboard');
+        
+        // Wait 2 seconds before reloading to allow Google Sheet to update the export
+        setTimeout(() => {
+          loadData();
+        }, 2000);
       } else {
         alert('Error al registrar la evidencia');
       }
@@ -303,6 +355,11 @@ const VisitasPOCSModule: React.FC<VisitasPOCSModuleProps> = ({ onBack, searchTer
   };
 
   const filteredRecords = baseFilteredRecords;
+  const totalPages = Math.ceil(filteredRecords.length / itemsPerPage);
+  const paginatedRecords = filteredRecords.slice(
+    (currentPage - 1) * itemsPerPage,
+    currentPage * itemsPerPage
+  );
 
   const handleExportToExcel = () => {
     const dataToExport = filteredRecords.map(record => ({
@@ -404,23 +461,30 @@ const VisitasPOCSModule: React.FC<VisitasPOCSModuleProps> = ({ onBack, searchTer
           </div>
           <div>
             <h2 className="text-3xl font-black text-slate-900 uppercase tracking-tight">Visitas POCS</h2>
-            <div className="flex gap-4 mt-2">
-              <button
-                onClick={() => setActiveTab('dashboard')}
-                className={`text-[10px] font-black uppercase tracking-widest transition-all ${
-                  activeTab === 'dashboard' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-400 hover:text-slate-600'
-                }`}
-              >
-                Dashboard
-              </button>
-              <button
-                onClick={() => setActiveTab('evidence')}
-                className={`text-[10px] font-black uppercase tracking-widest transition-all ${
-                  activeTab === 'evidence' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-400 hover:text-slate-600'
-                }`}
-              >
-                Cargar Evidencia
-              </button>
+            <div className="flex items-center gap-4 mt-2">
+              <div className="flex gap-4">
+                <button
+                  onClick={() => setActiveTab('dashboard')}
+                  className={`text-[10px] font-black uppercase tracking-widest transition-all ${
+                    activeTab === 'dashboard' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-400 hover:text-slate-600'
+                  }`}
+                >
+                  Dashboard
+                </button>
+                <button
+                  onClick={() => setActiveTab('evidence')}
+                  className={`text-[10px] font-black uppercase tracking-widest transition-all ${
+                    activeTab === 'evidence' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-400 hover:text-slate-600'
+                  }`}
+                >
+                  Cargar Evidencia
+                </button>
+              </div>
+              {lastUpdated && (
+                <div className="text-[9px] font-bold text-slate-400 uppercase tracking-widest border-l pl-4 border-slate-200">
+                  ACTUALIZADO: {lastUpdated.toLocaleTimeString()}
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -745,54 +809,57 @@ const VisitasPOCSModule: React.FC<VisitasPOCSModuleProps> = ({ onBack, searchTer
           </div>
         </div>
         <div className="overflow-x-auto custom-scrollbar">
-          <table className="w-full text-left border-collapse min-w-[1000px]">
-            <thead>
-              <tr className="bg-slate-50/80 border-b">
-                <th className="px-8 py-5 text-[11px] font-black text-slate-500 uppercase tracking-widest">Cliente</th>
-                <th className="px-8 py-5 text-[11px] font-black text-slate-500 uppercase tracking-widest">Ubicación</th>
-                <th className="px-8 py-5 text-[11px] font-black text-slate-500 uppercase tracking-widest">Riesgo</th>
-                <th className="px-8 py-5 text-[11px] font-black text-slate-500 uppercase tracking-widest">Validador</th>
-                <th className="px-8 py-5 text-[11px] font-black text-slate-500 uppercase tracking-widest">Programación</th>
-                <th className="px-8 py-5 text-[11px] font-black text-slate-500 uppercase tracking-widest">Ejecución</th>
-                <th className="px-8 py-5 text-[11px] font-black text-slate-500 uppercase tracking-widest text-center">Calificación</th>
-                <th className="px-8 py-5 text-[11px] font-black text-slate-500 uppercase tracking-widest text-center">Evidencia</th>
-                <th className="px-8 py-5 text-[11px] font-black text-slate-500 uppercase tracking-widest text-center">Mapa</th>
-              </tr>
-            </thead>
+                <table className="w-full text-left border-collapse min-w-[1200px]">
+                  <thead>
+                    <tr className="bg-slate-50/80 border-b">
+                      <th className="px-5 py-4 text-[11px] font-black text-slate-500 uppercase tracking-widest">Cliente</th>
+                      <th className="px-5 py-4 text-[11px] font-black text-slate-500 uppercase tracking-widest">Ubicación</th>
+                      <th className="px-5 py-4 text-[11px] font-black text-slate-500 uppercase tracking-widest">Riesgo</th>
+                      <th className="px-5 py-4 text-[11px] font-black text-slate-500 uppercase tracking-widest">Validador</th>
+                      <th className="px-5 py-4 text-[11px] font-black text-slate-500 uppercase tracking-widest">Programación</th>
+                      <th className="px-5 py-4 text-[11px] font-black text-slate-500 uppercase tracking-widest">Ejecución</th>
+                      <th className="px-5 py-4 text-[11px] font-black text-slate-500 uppercase tracking-widest text-center">Calificación</th>
+                      <th className="px-5 py-4 text-[11px] font-black text-slate-500 uppercase tracking-widest text-center">Evidencia</th>
+                      <th className="px-5 py-4 text-[11px] font-black text-slate-500 uppercase tracking-widest text-center">Mapa</th>
+                      <th className="px-5 py-4 text-[11px] font-black text-slate-500 uppercase tracking-widest">Observaciones (R)</th>
+                      <th className="px-5 py-4 text-[11px] font-black text-slate-500 uppercase tracking-widest">Plan de Acción (S)</th>
+                      <th className="px-5 py-4 text-[11px] font-black text-slate-500 uppercase tracking-widest text-center">Acciones</th>
+                    </tr>
+                  </thead>
             <tbody className="divide-y divide-slate-100">
               {isLoading ? (
                 <tr>
-                  <td colSpan={9} className="px-8 py-32 text-center">
+                  <td colSpan={12} className="px-5 py-32 text-center">
                     <Loader2 className="animate-spin text-slate-300 mx-auto mb-6" size={48} />
                     <div className="text-[11px] font-black text-slate-400 uppercase tracking-widest">Sincronizando información...</div>
                   </td>
                 </tr>
               ) : filteredRecords.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="px-8 py-32 text-center">
+                  <td colSpan={12} className="px-5 py-32 text-center">
                     <div className="text-[11px] font-black text-slate-400 uppercase tracking-widest">No se encontraron registros coincidentes</div>
                   </td>
                 </tr>
               ) : (
-                filteredRecords.map((record) => (
+                paginatedRecords.map((record) => (
                   <tr key={record.id} className="hover:bg-slate-50/50 transition-colors group">
-                    <td className="px-8 py-6">
+                    <td className="px-5 py-5">
                       <div className="text-sm font-black text-slate-800 uppercase group-hover:text-rose-600 transition-colors">{record.cliente}</div>
                       <div className="text-[10px] text-slate-400 font-bold mt-1">CÓDIGO: {record.codigoCliente}</div>
                     </td>
-                    <td className="px-8 py-6">
+                    <td className="px-5 py-5">
                       <div className="flex items-center gap-2 text-[11px] font-bold text-slate-600">
                         <MapPin size={14} className="text-slate-400" />
                         {record.barrio}, {record.municipio}
                       </div>
                       <div className="text-[10px] text-slate-400 ml-6 mt-1 uppercase">{record.direccion}</div>
                     </td>
-                    <td className="px-8 py-6">
+                    <td className="px-5 py-5">
                       <span className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase border shadow-sm ${getRiskColor(record.nivelRiesgo)}`}>
                         {record.nivelRiesgo}
                       </span>
                     </td>
-                    <td className="px-8 py-6">
+                    <td className="px-5 py-5">
                       <div className="flex items-center gap-2">
                         <div className="w-8 h-8 bg-slate-100 rounded-lg flex items-center justify-center text-slate-500 text-[10px] font-black">
                           {record.validador.substring(0, 2).toUpperCase()}
@@ -800,13 +867,13 @@ const VisitasPOCSModule: React.FC<VisitasPOCSModuleProps> = ({ onBack, searchTer
                         <div className="text-[11px] font-bold text-slate-600 uppercase">{record.validador}</div>
                       </div>
                     </td>
-                    <td className="px-8 py-6">
+                    <td className="px-5 py-5">
                       <div className="flex items-center gap-2 text-[11px] font-bold text-slate-600">
                         <Calendar size={14} className="text-slate-400" />
                         {record.fechaProgramacion || '---'}
                       </div>
                     </td>
-                    <td className="px-8 py-6">
+                    <td className="px-5 py-5">
                       <div className="flex items-center gap-2 text-[11px] font-bold text-slate-600">
                         <CheckCircle2 size={14} className={isExecuted(record) ? 'text-emerald-500' : isPending(record) ? 'text-amber-500' : 'text-slate-300'} />
                         <span className={isExecuted(record) ? 'text-slate-700' : isPending(record) ? 'text-amber-600' : 'text-slate-400 italic'}>
@@ -814,12 +881,12 @@ const VisitasPOCSModule: React.FC<VisitasPOCSModuleProps> = ({ onBack, searchTer
                         </span>
                       </div>
                     </td>
-                    <td className="px-8 py-6 text-center">
+                    <td className="px-5 py-5 text-center">
                       <div className="inline-block px-4 py-2 bg-slate-800 text-white rounded-xl text-[11px] font-black shadow-md">
                         {record.calificacion || '---'}
                       </div>
                     </td>
-                    <td className="px-8 py-6 text-center">
+                    <td className="px-5 py-5 text-center">
                       {record.evidenciaUrl ? (
                         <button 
                           onClick={() => setViewer({ type: 'image', url: record.evidenciaUrl, title: `Evidencia: ${record.cliente}` })}
@@ -832,7 +899,7 @@ const VisitasPOCSModule: React.FC<VisitasPOCSModuleProps> = ({ onBack, searchTer
                         <span className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">SIN SOPORTE</span>
                       )}
                     </td>
-                    <td className="px-8 py-6 text-center">
+                    <td className="px-5 py-5 text-center">
                       {record.mapUrl ? (
                         <button 
                           onClick={() => setViewer({ type: 'map', url: record.mapUrl, title: `Ubicación: ${record.cliente}` })}
@@ -845,12 +912,79 @@ const VisitasPOCSModule: React.FC<VisitasPOCSModuleProps> = ({ onBack, searchTer
                         <span className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">---</span>
                       )}
                     </td>
+                    <td className="px-5 py-5">
+                      <div className="text-[11px] font-medium text-slate-600 line-clamp-2 max-w-[150px]">
+                        {record.observaciones || '---'}
+                      </div>
+                    </td>
+                    <td className="px-5 py-5">
+                      <div className="text-[11px] font-medium text-slate-600 line-clamp-2 max-w-[150px]">
+                        {record.planAccion || '---'}
+                      </div>
+                    </td>
+                    <td className="px-5 py-5 text-center">
+                      <button 
+                        onClick={() => handleEditClick(record)}
+                        className="p-2.5 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-100 transition-colors border border-blue-100 shadow-sm"
+                        title="Editar Observaciones y Plan de Acción"
+                      >
+                        <Edit3 size={15} />
+                      </button>
+                    </td>
                   </tr>
                 ))
               )}
             </tbody>
           </table>
         </div>
+        
+        {/* Pagination Controls */}
+        {totalPages > 1 && (
+          <div className="px-8 py-5 bg-slate-50/50 border-t flex items-center justify-between">
+            <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+              Mostrando {Math.min(filteredRecords.length, (currentPage - 1) * itemsPerPage + 1)}-{Math.min(filteredRecords.length, currentPage * itemsPerPage)} de {filteredRecords.length} registros
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                disabled={currentPage === 1}
+                className="p-2 bg-white border border-slate-200 rounded-lg text-slate-400 hover:text-slate-600 disabled:opacity-30 disabled:cursor-not-allowed transition-all shadow-sm"
+              >
+                <ChevronLeft size={16} />
+              </button>
+              <div className="flex items-center gap-1">
+                {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                  let pageNum = currentPage;
+                  if (totalPages <= 5) pageNum = i + 1;
+                  else if (currentPage <= 3) pageNum = i + 1;
+                  else if (currentPage >= totalPages - 2) pageNum = totalPages - 4 + i;
+                  else pageNum = currentPage - 2 + i;
+
+                  return (
+                    <button
+                      key={pageNum}
+                      onClick={() => setCurrentPage(pageNum)}
+                      className={`w-8 h-8 rounded-lg text-[10px] font-black transition-all ${
+                        currentPage === pageNum 
+                        ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/30' 
+                        : 'bg-white border border-slate-200 text-slate-400 hover:border-blue-300'
+                      }`}
+                    >
+                      {pageNum}
+                    </button>
+                  );
+                })}
+              </div>
+              <button
+                onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                disabled={currentPage === totalPages}
+                className="p-2 bg-white border border-slate-200 rounded-lg text-slate-400 hover:text-slate-600 disabled:opacity-30 disabled:cursor-not-allowed transition-all shadow-sm"
+              >
+                <ChevronRight size={16} />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
         </>
       ) : (
@@ -1136,6 +1270,76 @@ const VisitasPOCSModule: React.FC<VisitasPOCSModuleProps> = ({ onBack, searchTer
                     allowFullScreen
                   />
                 )}
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* MODAL DE EDICIÓN DE SEGUIMIENTO */}
+      <AnimatePresence>
+        {editingRecord && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="bg-white rounded-[2.5rem] shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden"
+            >
+              <div className="p-8 border-b bg-slate-50 flex items-center justify-between">
+                <div>
+                  <h3 className="text-xl font-black text-slate-900 uppercase tracking-tight">Editar Seguimiento POC</h3>
+                  <p className="text-xs text-blue-500 font-bold mt-1 uppercase tracking-widest">{editingRecord.cliente}</p>
+                </div>
+                <button 
+                  onClick={() => setEditingRecord(null)}
+                  className="p-2 hover:bg-slate-200 rounded-full transition-colors text-slate-400"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+              
+              <div className="p-8 space-y-6">
+                <div>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3">Observaciones (Columna R)</label>
+                  <textarea 
+                    value={editForm.observaciones}
+                    onChange={(e) => setEditForm(prev => ({ ...prev, observaciones: e.target.value }))}
+                    className="w-full h-32 p-5 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all resize-none"
+                    placeholder="Escribe las observaciones de la visita..."
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3">Plan de Acción (Columna S)</label>
+                  <textarea 
+                    value={editForm.planAccion}
+                    onChange={(e) => setEditForm(prev => ({ ...prev, planAccion: e.target.value }))}
+                    className="w-full h-32 p-5 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all resize-none"
+                    placeholder="Escribe el plan de acciones a seguir..."
+                  />
+                </div>
+              </div>
+              
+              <div className="p-8 bg-slate-50 border-t flex gap-4">
+                <button 
+                  onClick={() => setEditingRecord(null)}
+                  className="flex-1 px-8 py-4 bg-white border border-slate-200 text-slate-600 font-black rounded-2xl hover:bg-slate-100 transition-all uppercase tracking-widest text-xs"
+                >
+                  Cancelar
+                </button>
+                <button 
+                  onClick={handleSubmitUpdate}
+                  disabled={isUpdating}
+                  className="flex-1 px-8 py-4 bg-blue-500 text-white font-black rounded-2xl hover:bg-blue-600 transition-all shadow-lg shadow-blue-500/30 flex items-center justify-center gap-3 uppercase tracking-widest text-xs disabled:opacity-50"
+                >
+                  {isUpdating ? (
+                    <Loader2 size={16} className="animate-spin" />
+                  ) : (
+                    <Save size={16} />
+                  )}
+                  {isUpdating ? 'Guardando...' : 'Guardar Cambios'}
+                </button>
               </div>
             </motion.div>
           </div>

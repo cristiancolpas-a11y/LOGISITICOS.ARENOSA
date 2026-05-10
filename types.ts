@@ -250,6 +250,8 @@ export interface CashlessRecord {
   calificacion: string;
   evidenciaUrl?: string;
   mapUrl?: string;
+  observaciones: string;    // R (17)
+  planAccion: string;       // S (18)
 }
 
 export interface PeopleUser {

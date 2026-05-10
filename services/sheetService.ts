@@ -3,7 +3,7 @@ import Papa from 'papaparse';
 import { Vehicle, Driver, Report, MileageLog, Calibration, WashReport, Fine, Preventive, AvailabilityRecord, FleetComposition, OperationalIndicator, WorkshopRecord, SafetyRecord, StaffMember, CashlessRecord, PeopleUser, MentorshipPlan, MentorshipTask, MedicalRecord } from '../types';
 import { calculateStatus, normalizePlate, normalizeStr, getDaysDiff } from '../utils';
 
-const GOOGLE_SCRIPT_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbzqKd-TD93Z_qC-aTBD3zfrytKTBHSA5GYERQYIdVJaFIb02r33RITFlipHp43sLuhe/exec'; 
+const GOOGLE_SCRIPT_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbzeccK4TFwlxIZBXlWt8YewyBAK5gISdwqR-B0ufg6-kYv6aecavsa4UFHwL2ynztou/exec'; 
 const GOOGLE_SCRIPT_FINES_URL = 'https://script.google.com/macros/s/AKfycbxVjLry2rjYYsFLk_3PERq5KH39P73Oda3LFPKOu2uVammhZenY0I01-SeDU0tAy9uk/exec';
 const GOOGLE_SCRIPT_WORKSHOP_URL = 'https://script.google.com/macros/s/AKfycbxU8y_M1pACZaBf92uc0W01I4UqCqmOwnt7uUZSTezkSMQZgXYSLGv0laaGlR9UGJ8q/exec';
 const GOOGLE_SCRIPT_MENTORSHIP_URL = 'https://script.google.com/macros/s/AKfycbzqKd-TD93Z_qC-aTBD3zfrytKTBHSA5GYERQYIdVJaFIb02r33RITFlipHp43sLuhe/exec';
@@ -22,7 +22,7 @@ const BASE_URL_FINES = `https://docs.google.com/spreadsheets/d/${FINES_SHEET_ID}
 
 // HOJA CASHLESS
 const CASHLESS_DOC_ID = '1wyWYtEgi2eA2b-8DDpqr7l0SXF6-nG6oM71s8Gfwi04';
-const BASE_URL_CASHLESS = `https://docs.google.com/spreadsheets/d/${CASHLESS_DOC_ID}/export?format=csv`;
+const BASE_URL_CASHLESS = `https://docs.google.com/spreadsheets/d/${CASHLESS_DOC_ID}/gviz/tq?tqx=out:csv`;
 
 // HOJA PLAN PADRINO
 const PLAN_PADRINO_DOC_ID = '1yt6Hr-RIGTca21zPwq2bn1KkbpRNvEJ6lm4VL76Q_Co';
@@ -1018,7 +1018,7 @@ export const fetchStaffFromSheet = async (): Promise<StaffMember[]> => {
 export const fetchCashlessFromSheet = async (): Promise<CashlessRecord[]> => {
   try {
     const url = `${BASE_URL_CASHLESS}&sheet=DETALLE${getCacheBuster()}`;
-    const response = await fetch(url);
+    const response = await fetch(url, { cache: 'no-store' });
     const csvText = await response.text();
     if (!csvText || csvText.includes("<!DOCTYPE html")) return [];
 
@@ -1050,6 +1050,8 @@ export const fetchCashlessFromSheet = async (): Promise<CashlessRecord[]> => {
                 calificacion: cleanSheetValue(row[11]), // L
                 evidenciaUrl: cleanSheetValue(row[12]), // M
                 mapUrl: cleanSheetValue(row[14]), // O
+                observaciones: cleanSheetValue(row[17]), // R
+                planAccion: cleanSheetValue(row[18]), // S
               };
             });
           resolve(records);
@@ -1093,6 +1095,9 @@ export const submitWashToSheet = async (washData: any): Promise<void> => { await
 export const submitCleaningToSheet = async (cleaningData: any): Promise<void> => { await sendToGAS({ method: 'POST_CLEANING', data: cleaningData }); };
 export const submitWorkshopVisitUpdateToSheet = async (visitData: any): Promise<void> => { await sendToGAS({ method: 'POST_WORKSHOP_VISIT_UPDATE', data: visitData }); };
 export const submitWorkshopRecordToSheet = async (data: any): Promise<void> => { await sendToGAS({ method: 'POST_WORKSHOP_RECORD', data }, GOOGLE_SCRIPT_WORKSHOP_URL); };
+export const submitCashlessUpdateToSheet = async (data: { codigoCliente: string, observaciones: string, planAccion: string }): Promise<void> => { 
+  await sendToGAS({ method: 'POST_CASHLESS_UPDATE', data }); 
+};
 export const submitPreventiveUpdateToSheet = async (data: any): Promise<void> => { await sendToGAS({ method: 'POST_PREVENTIVE_UPDATE', data }); };
 export const submitFineToSheet = async (data: any): Promise<boolean> => {
   const method = data.updateMode ? 'POST_FINE_UPDATE' : 'POST_FINE';

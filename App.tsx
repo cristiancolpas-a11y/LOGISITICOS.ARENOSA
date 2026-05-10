@@ -3,6 +3,7 @@ import { Vehicle } from './types';
 import DocumentViewer from './components/DocumentViewer';
 import ACISModule from './components/ACISModule';
 import VisitasPOCSModule from './components/CashlessModule';
+import CashlessComingSoonModule from './components/CashlessComingSoon';
 import PeopleModule from './components/PeopleModule';
 import ExamenesMedicosModule from './components/ExamenesMedicosModule';
 
@@ -14,7 +15,7 @@ import {
   RefreshCw, Loader2, Search, ShieldAlert, CreditCard, Home, ChevronLeft, Stethoscope, ChevronRight
 } from 'lucide-react';
 
-type ActiveView = 'acis' | 'cashless' | 'people-placeholder' | 'examenes-medicos';
+type ActiveView = 'acis' | 'cashless' | 'pocs' | 'people-placeholder' | 'examenes-medicos';
 
 const App: React.FC = () => {
   const [showEntryMenu, setShowEntryMenu] = useState(true);
@@ -132,11 +133,18 @@ const App: React.FC = () => {
                     color: 'rose' 
                   },
                   { 
-                    id: 'cashless', 
+                    id: 'pocs', 
                     label: 'VISITAS POCS', 
                     description: 'Seguimiento y auditoría de visitas estratégicas.',
                     icon: <CreditCard />, 
                     color: 'blue' 
+                  },
+                  { 
+                    id: 'cashless', 
+                    label: 'CASHLESS', 
+                    description: 'Gestión y control de transacciones sin efectivo.',
+                    icon: <CreditCard />, 
+                    color: 'indigo' 
                   },
                   { 
                     id: 'examenes-medicos', 
@@ -223,8 +231,11 @@ const App: React.FC = () => {
           {activeView === 'acis' && (
             <ACISModule onBack={() => setShowEntryMenu(true)} vehicles={vehicles} searchTerm={searchTerm} />
           )}
-          {activeView === 'cashless' && (
+          {activeView === 'pocs' && (
             <VisitasPOCSModule onBack={() => setShowEntryMenu(true)} searchTerm={searchTerm} />
+          )}
+          {activeView === 'cashless' && (
+            <CashlessComingSoonModule onBack={() => setShowEntryMenu(true)} />
           )}
           {activeView === 'examenes-medicos' && (
             <ExamenesMedicosModule searchTerm={searchTerm} />
