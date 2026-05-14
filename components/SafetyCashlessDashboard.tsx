@@ -453,6 +453,7 @@ const SafetyCashlessDashboard: React.FC<Props> = ({ onBack }) => {
                     />
                     <Bar 
                       dataKey="alerts" 
+                      name="Alertas"
                       fill={COLORS.neonRed} 
                       radius={[0, 4, 4, 0]}
                       barSize={12}
@@ -569,7 +570,11 @@ const SafetyCashlessDashboard: React.FC<Props> = ({ onBack }) => {
                           <Cell key={`cell-${index}`} fill={entry.color} />
                         ))}
                       </Pie>
-                      <ReTooltip />
+                      <ReTooltip 
+                        contentStyle={{ backgroundColor: COLORS.cardBg, borderColor: 'rgba(255,255,255,0.1)', borderRadius: '12px' }}
+                        itemStyle={{ color: '#fff', fontSize: '11px' }}
+                        formatter={(value: number) => [value, 'Registros']}
+                      />
                     </PieChart>
                   </ResponsiveContainer>
                 </div>
@@ -802,22 +807,6 @@ const SafetyCashlessDashboard: React.FC<Props> = ({ onBack }) => {
         </div>
       </div>
       
-      {/* MOBILE RESPONSIVE NAV/STATUS BAR */}
-      <div className="h-12 bg-slate-900 border-t border-white/5 px-8 flex items-center justify-between shrink-0">
-          <div className="flex gap-6">
-             <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-emerald-500" />
-                <span className="text-[10px] font-black text-slate-500 uppercase">NETWORK OK</span>
-             </div>
-             <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-blue-500" />
-                <span className="text-[10px] font-black text-slate-500 uppercase">SYNC ACTIVE</span>
-             </div>
-          </div>
-          <div className="text-[10px] font-black text-blue-500/50 uppercase tracking-[0.3em]">
-             LOGISTICOS.CO // C-CENTER
-          </div>
-      </div>
     </div>
   );
 };
