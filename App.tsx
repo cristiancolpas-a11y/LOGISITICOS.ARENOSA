@@ -3,7 +3,7 @@ import { Vehicle } from './types';
 import DocumentViewer from './components/DocumentViewer';
 import ACISModule from './components/ACISModule';
 import VisitasPOCSModule from './components/CashlessModule';
-import CashlessComingSoonModule from './components/CashlessComingSoon';
+import SafetyCashlessDashboard from './components/SafetyCashlessDashboard';
 import PeopleModule from './components/PeopleModule';
 import ExamenesMedicosModule from './components/ExamenesMedicosModule';
 
@@ -184,7 +184,7 @@ const App: React.FC = () => {
     );
   }
 
-  const isPeopleView = activeView === 'people-placeholder';
+  const isFullView = activeView === 'people-placeholder' || activeView === 'cashless';
 
   return (
     <div className="min-h-screen bg-[#f8fafc] flex flex-col w-full">
@@ -192,7 +192,7 @@ const App: React.FC = () => {
       
       <main className="flex-grow flex flex-col h-screen overflow-hidden">
         {/* HEADER */}
-        {!isPeopleView && (
+        {!isFullView && (
           <header className="bg-white border-b p-4 flex justify-between items-center shrink-0 shadow-sm z-10">
             <div className="flex items-center gap-4 flex-grow px-4">
               <button 
@@ -227,7 +227,7 @@ const App: React.FC = () => {
         )}
 
         {/* CONTENT AREA */}
-        <div className={`flex-grow overflow-y-auto bg-[#f8fafc] custom-scrollbar ${isPeopleView ? 'p-0' : 'p-6 md:p-12 lg:p-20'}`}>
+        <div className={`flex-grow overflow-y-auto bg-[#f8fafc] custom-scrollbar ${isFullView ? 'p-0' : 'p-6 md:p-12 lg:p-20'}`}>
           {activeView === 'acis' && (
             <ACISModule onBack={() => setShowEntryMenu(true)} vehicles={vehicles} searchTerm={searchTerm} />
           )}
@@ -235,7 +235,7 @@ const App: React.FC = () => {
             <VisitasPOCSModule onBack={() => setShowEntryMenu(true)} searchTerm={searchTerm} />
           )}
           {activeView === 'cashless' && (
-            <CashlessComingSoonModule onBack={() => setShowEntryMenu(true)} />
+            <SafetyCashlessDashboard onBack={() => setShowEntryMenu(true)} />
           )}
           {activeView === 'examenes-medicos' && (
             <ExamenesMedicosModule searchTerm={searchTerm} />

@@ -254,6 +254,34 @@ export interface CashlessRecord {
   planAccion: string;       // S (18)
 }
 
+export interface CashlessDashboardRecord {
+  id: string;
+  ruta: string;
+  visita: string;
+  clienteId: string;
+  nombreCliente: string;
+  vp: string;
+  sp: string;
+  viaPago: string;
+  recibo: string;
+  importe: number;
+  moneda: string;
+  vehiculo: string;
+  centro: string;
+  transportista: string;
+  fecha: string;
+  dt: string;
+  clientes: string;
+  alerta: string;
+  transportistaContratante: string;
+  responsableRuta: string;
+  mes: string;
+  dia: string;
+  placa: string;
+  rr: string;
+  filtros: string;
+}
+
 export interface PeopleUser {
   id: string;
   name: string;

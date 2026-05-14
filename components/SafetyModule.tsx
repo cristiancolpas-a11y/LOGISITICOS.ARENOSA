@@ -13,11 +13,13 @@ import {
   RefreshCw,
   Image as ImageIcon,
   Cpu,
-  ShieldAlert
+  ShieldAlert,
+  CreditCard
 } from 'lucide-react';
 import { SafetyRecord, Vehicle, StaffMember } from '../types';
 import { fetchSafetyReportsFromSheet, fetchStaffFromSheet } from '../services/sheetService';
 import { SafetyForm } from './SafetyForm';
+import SafetyCashlessDashboard from './SafetyCashlessDashboard';
 
 interface SafetyModuleProps {
   onBack: () => void;
@@ -27,7 +29,8 @@ interface SafetyModuleProps {
 }
 
 const SAFETY_AREAS = [
-  { id: 'ACIS', name: 'ACIS', icon: ShieldAlert, color: 'text-rose-500', bg: 'bg-rose-500/10', border: 'border-rose-500/20' }
+  { id: 'ACIS', name: 'ACIS', icon: ShieldAlert, color: 'text-rose-500', bg: 'bg-rose-500/10', border: 'border-rose-500/20' },
+  { id: 'CASHLESS', name: 'CASHLESS', icon: CreditCard, color: 'text-blue-500', bg: 'bg-blue-500/10', border: 'border-blue-500/20' }
 ];
 
 const MONTHS: (keyof StaffMember['goals'])[] = [
@@ -454,6 +457,21 @@ const SafetyModule: React.FC<SafetyModuleProps> = ({ onBack, vehicles, isView = 
   };
 
   const renderSafetyView = () => {
+    if (activeArea === 'CASHLESS') {
+      return (
+        <div className="flex flex-col h-full overflow-hidden relative">
+          <button 
+            onClick={() => setActiveArea(null)}
+            className="absolute top-8 left-8 z-30 p-2.5 bg-slate-800/80 hover:bg-blue-600 border border-white/10 rounded-xl transition-all text-white group"
+            title="Volver"
+          >
+            <ChevronLeft size={20} className="group-hover:-translate-x-1 transition-transform" />
+          </button>
+          <SafetyCashlessDashboard />
+        </div>
+      );
+    }
+
     const area = SAFETY_AREAS.find(a => a.id === activeArea) || SAFETY_AREAS[0];
     if (!area) return null;
 

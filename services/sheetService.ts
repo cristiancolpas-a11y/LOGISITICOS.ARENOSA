@@ -1,6 +1,6 @@
 
 import Papa from 'papaparse';
-import { Vehicle, Driver, Report, MileageLog, Calibration, WashReport, Fine, Preventive, AvailabilityRecord, FleetComposition, OperationalIndicator, WorkshopRecord, SafetyRecord, StaffMember, CashlessRecord, PeopleUser, MentorshipPlan, MentorshipTask, MedicalRecord } from '../types';
+import { Vehicle, Driver, Report, MileageLog, Calibration, WashReport, Fine, Preventive, AvailabilityRecord, FleetComposition, OperationalIndicator, WorkshopRecord, SafetyRecord, StaffMember, CashlessRecord, CashlessDashboardRecord, PeopleUser, MentorshipPlan, MentorshipTask, MedicalRecord } from '../types';
 import { calculateStatus, normalizePlate, normalizeStr, getDaysDiff } from '../utils';
 
 const GOOGLE_SCRIPT_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbzeccK4TFwlxIZBXlWt8YewyBAK5gISdwqR-B0ufg6-kYv6aecavsa4UFHwL2ynztou/exec'; 
@@ -1062,6 +1062,96 @@ export const fetchCashlessFromSheet = async (): Promise<CashlessRecord[]> => {
   } catch (e) { 
     console.error("Error in fetchCashlessFromSheet:", e);
     return []; 
+  }
+};
+
+export const fetchCashlessDashboardFromSheet = async (): Promise<CashlessDashboardRecord[]> => {
+  try {
+    const docId = '1BHPadpCfWGVMrBd6Poc9RlU_Oetq0RKO_VU5z6bNNZE';
+    const sheetName = 'SQ00';
+    
+    const urls = [
+      `https://docs.google.com/spreadsheets/d/${docId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(sheetName)}${getCacheBuster()}`,
+      `https://docs.google.com/spreadsheets/d/${docId}/export?format=csv&sheet=${encodeURIComponent(sheetName)}${getCacheBuster()}`,
+      `https://docs.google.com/spreadsheets/d/${docId}/export?format=csv&gid=0${getCacheBuster()}`
+    ];
+
+    let csvText = '';
+    for (const url of urls) {
+      try {
+        const response = await fetch(url, { cache: 'no-store' });
+        if (response.ok) {
+          const text = await response.text();
+          if (text && !text.includes("<!DOCTYPE html")) {
+            csvText = text;
+            break;
+          }
+        }
+      } catch (e) {
+        console.warn(`Fetch attempt failed for ${url}:`, e);
+      }
+    }
+    
+    if (!csvText) {
+      console.error("No valid CSV data received from any Cashless Dashboard URL");
+      return [];
+    }
+
+    return new Promise((resolve) => {
+      Papa.parse(csvText, {
+        header: false,
+        skipEmptyLines: 'greedy',
+        complete: (results) => {
+          const rows = results.data as any[][];
+          if (!rows || rows.length < 1) { resolve([]); return; }
+          
+          // Skip header if first row looks like header
+          const firstRow = rows[0].map(c => cleanSheetValue(c).toLowerCase());
+          const hasHeader = firstRow.some(c => c.includes('ruta') || c.includes('visita') || c.includes('cliente'));
+          const dataRows = hasHeader ? rows.slice(1) : rows;
+
+          const records = dataRows
+            .filter(row => row && row.length >= 10 && cleanSheetValue(row[2]).length > 0)
+            .map((row, i): CashlessDashboardRecord => {
+              return {
+                id: `cdb-${i}`,
+                ruta: cleanSheetValue(row[0]),
+                visita: cleanSheetValue(row[1]),
+                clienteId: cleanSheetValue(row[2]),
+                nombreCliente: cleanSheetValue(row[3]),
+                vp: cleanSheetValue(row[4]),
+                sp: cleanSheetValue(row[5]),
+                viaPago: cleanSheetValue(row[6]),
+                recibo: cleanSheetValue(row[7]),
+                importe: parseFloat(cleanSheetValue(row[23]).replace(/[$,]/g, '')) || 0,
+                moneda: cleanSheetValue(row[9]),
+                vehiculo: cleanSheetValue(row[10]),
+                placa: cleanSheetValue(row[10]),
+                centro: cleanSheetValue(row[11]),
+                transportista: cleanSheetValue(row[17]),
+                fecha: parseFlexibleDate(row[13]),
+                dt: cleanSheetValue(row[14]),
+                clientes: cleanSheetValue(row[15]),
+                alerta: cleanSheetValue(row[16]),
+                transportistaContratante: cleanSheetValue(row[17]),
+                responsableRuta: cleanSheetValue(row[18]),
+                rr: cleanSheetValue(row[18]),
+                filtros: cleanSheetValue(row[19]),
+                mes: cleanSheetValue(row[21]),
+                dia: cleanSheetValue(row[22]),
+              };
+            });
+          resolve(records);
+        },
+        error: (err) => {
+          console.error("PapaParse error in fetchCashlessDashboardFromSheet:", err);
+          resolve([]);
+        }
+      });
+    });
+  } catch (e) {
+    console.error("Critical error in fetchCashlessDashboardFromSheet:", e);
+    return [];
   }
 };
 
