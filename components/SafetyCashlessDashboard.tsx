@@ -213,18 +213,24 @@ const SafetyCashlessDashboard: React.FC<Props> = ({ onBack }) => {
     ];
   }, [filteredData]);
 
-  // Trend Data (Daily Recaudo)
-  const trendData = useMemo(() => {
-    const d = getFilteredSubset().filter(r => r.alerta === 'CON ALERTA');
-    const map = d.reduce<Record<string, { date: string, amount: number }>>((acc, r) => {
-      const date = r.fecha || 'N/A';
-      if (!acc[date]) acc[date] = { date, amount: 0 };
-      acc[date].amount += r.importe;
+  // Chart Data: Top Responsables by Peak Alert Value
+  const topResponsablesByPeak = useMemo(() => {
+    const d = getFilteredSubset('responsable');
+    const map = d.reduce<Record<string, { name: string, maxAmount: number }>>((acc, r) => {
+      if (r.alerta === 'CON ALERTA') {
+        if (!acc[r.responsableRuta]) {
+          acc[r.responsableRuta] = { name: r.responsableRuta, maxAmount: r.importe };
+        } else {
+          acc[r.responsableRuta].maxAmount = Math.max(acc[r.responsableRuta].maxAmount, r.importe);
+        }
+      }
       return acc;
     }, {});
 
-    return (Object.values(map) as { date: string, amount: number }[]).sort((a,b) => a.date.localeCompare(b.date));
-  }, [data, selectedCentro, selectedTransportista, selectedResponsable, selectedMes, selectedDia, selectedSemana, selectedRuta, selectedAlerta, searchTerm]);
+    return (Object.values(map) as { name: string, maxAmount: number }[])
+      .sort((a, b) => b.maxAmount - a.maxAmount)
+      .slice(0, 10);
+  }, [data, selectedCentro, selectedTransportista, selectedMes, selectedDia, selectedSemana, selectedRuta, selectedAlerta, searchTerm]);
 
   // Chart Data: Monthly Alerts (Independent Filter)
   const monthlyAlertsData = useMemo(() => {
@@ -517,38 +523,41 @@ const SafetyCashlessDashboard: React.FC<Props> = ({ onBack }) => {
                 <div className="absolute top-0 right-0 p-4 opacity-10">
                    <TrendingUp size={64} className="text-blue-500" />
                 </div>
-                <h3 className="text-sm font-black text-white uppercase tracking-wider mb-4 flex items-center gap-3">
-                  <TrendingUp className="text-emerald-500" size={18} /> Dinero en efectivo
+                <h3 className="text-sm font-black text-rose-500 uppercase tracking-wider mb-4 flex items-center gap-3">
+                  <ShieldAlert className="text-rose-500" size={18} /> Top Monto Máximo — Responsables
                 </h3>
                 <div className="flex-grow">
                   <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart 
-                      data={trendData}
+                    <BarChart 
+                      data={topResponsablesByPeak}
+                      layout="vertical"
+                      margin={{ left: 20, right: 100 }}
                       onClick={(state) => {
                         if (state && state.activeLabel) {
                           const val = String(state.activeLabel);
-                          setSelectedDia(prev => prev === val ? 'TODOS' : val);
+                          setSelectedResponsable(prev => prev === val ? 'TODOS' : val);
                         }
                       }}
                       className="cursor-pointer"
                     >
-                      <defs>
-                        <linearGradient id="colorAmt" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor={COLORS.blue} stopOpacity={0.3}/>
-                          <stop offset="95%" stopColor={COLORS.blue} stopOpacity={0}/>
-                        </linearGradient>
-                      </defs>
-                      <XAxis dataKey="date" hide />
+                      <XAxis type="number" hide />
+                      <YAxis 
+                        dataKey="name" 
+                        type="category" 
+                        tick={{ fill: COLORS.slate, fontSize: 10, fontWeight: 'bold' }}
+                        width={120}
+                        axisLine={false}
+                        tickLine={false}
+                      />
                       <ReTooltip 
                         contentStyle={{ backgroundColor: COLORS.cardBg, borderColor: 'rgba(255,255,255,0.1)', borderRadius: '12px' }}
                         itemStyle={{ color: '#fff', fontSize: '11px' }}
-                        labelStyle={{ color: COLORS.slate, fontWeight: 'bold', marginBottom: '4px' }}
-                        formatter={(value: number) => [formatCurrency(value), 'Monto']}
+                        formatter={(value: number) => [formatCurrency(value), 'Monto Máximo']}
                       />
-                      <Area type="monotone" dataKey="amount" name="Monto" stroke={COLORS.blue} fillOpacity={1} fill="url(#colorAmt)" strokeWidth={3}>
-                        <LabelList dataKey="amount" position="top" fill={COLORS.slate} fontSize={8} formatter={(v: number) => `$${(v/1000000).toFixed(1)}M`} />
-                      </Area>
-                    </AreaChart>
+                      <Bar dataKey="maxAmount" name="Monto Máximo" fill={COLORS.rose} radius={[0, 4, 4, 0]} barSize={12}>
+                        <LabelList dataKey="maxAmount" position="right" fill={COLORS.slate} fontSize={8} formatter={(v: number) => formatCurrency(v)} />
+                      </Bar>
+                    </BarChart>
                   </ResponsiveContainer>
                 </div>
               </div>
